@@ -129,7 +129,24 @@
 
   function finalizar() {
     var v = vista();
-    if (confirm('¿Finalizar el partido con ' + v.p.local.nombre + ' ' + v.p.golesLocal + ' – ' + v.p.golesVisita + ' ' + v.p.visita.nombre + '?')) {
+    var p = v.p;
+    var empate = p.golesLocal === p.golesVisita;
+    var debeHaberGanador = p.faseCodigo !== 'grupos' && p.faseCodigo !== 'amistoso' || !p.torneo.empates;
+    if (empate && debeHaberGanador) {
+      // Semifinal o final empatada (o básquet): se elige el ganador, por ejemplo en penales.
+      $('hoja-titulo').textContent = 'Empate: ¿quién ganó (penales)?';
+      var cont = $('hoja-lista');
+      cont.textContent = '';
+      [['local', p.local.nombre], ['visita', p.visita.nombre]].forEach(function (x) {
+        var b = L.crear('button', 'otro', x[1]);
+        b.type = 'button';
+        b.addEventListener('click', function () { hoja.close(); encolar({ accion: 'finalizar', ganador: x[0] }); });
+        cont.appendChild(b);
+      });
+      hoja.showModal ? hoja.showModal() : hoja.setAttribute('open', '');
+      return;
+    }
+    if (confirm('¿Finalizar el partido con ' + p.local.nombre + ' ' + p.golesLocal + ' – ' + p.golesVisita + ' ' + p.visita.nombre + '?')) {
       encolar({ accion: 'finalizar' });
     }
   }
@@ -200,31 +217,69 @@
   }
 
   // ---------- Hoja para elegir jugador ----------
-  function elegir(titulo, jugadores, extras, alElegir) {
+  // nomina = { convocados: [{id, nombre, dorsal}], curso: [{alumno, nombre}] }
+  // Si el tutor marcó convocados, se muestran primero; "Todo el curso" abre la lista completa con buscador.
+  function botonPersona(p, alElegir) {
+    var b = L.crear('button');
+    b.type = 'button';
+    b.appendChild(L.crear('b', '', p.dorsal !== null && p.dorsal !== undefined ? String(p.dorsal) : '·'));
+    b.appendChild(document.createTextNode(p.nombre));
+    b.dataset.buscar = p.nombre.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    b.addEventListener('click', function () { hoja.close(); alElegir(p.alumno ? { alumno: p.alumno, nombre: p.nombre } : { jugador: p.id, nombre: p.nombre }); });
+    return b;
+  }
+
+  function elegir(titulo, nomina, extras, alElegir, todoElCurso) {
     $('hoja-titulo').textContent = titulo;
     var cont = $('hoja-lista');
     cont.textContent = '';
-    jugadores.forEach(function (j) {
-      var b = L.crear('button');
-      b.type = 'button';
-      b.appendChild(L.crear('b', '', j.dorsal !== null && j.dorsal !== undefined ? String(j.dorsal) : '–'));
-      b.appendChild(document.createTextNode(j.nombre));
-      b.addEventListener('click', function () { hoja.close(); alElegir(j); });
-      cont.appendChild(b);
-    });
+    var lista = nomina.convocados;
+    if (todoElCurso || !nomina.convocados.length) {
+      lista = (todoElCurso ? nomina.convocados : []).concat(nomina.curso);
+      if (lista.length > 8) {
+        var buscar = L.crear('input', 'hoja-buscar');
+        buscar.type = 'search';
+        buscar.placeholder = 'Buscar por nombre o apellido';
+        buscar.setAttribute('aria-label', 'Buscar jugador');
+        buscar.addEventListener('input', function () {
+          var q = buscar.value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+          cont.querySelectorAll('button[data-buscar]').forEach(function (b) { b.hidden = q && b.dataset.buscar.indexOf(q) < 0; });
+        });
+        cont.appendChild(buscar);
+      }
+    }
+    lista.forEach(function (p) { cont.appendChild(botonPersona(p, alElegir)); });
+    if (!todoElCurso && nomina.convocados.length && nomina.curso.length) {
+      extras = [{ texto: 'Otro del curso (' + nomina.curso.length + ')', accion: function () { elegir(titulo, nomina, extras.slice(1), alElegir, true); } }].concat(extras || []);
+    }
+    if (!lista.length) cont.appendChild(L.crear('p', 'nota-panel', 'Este equipo no tiene nómina. Puedes registrar sin jugador.'));
     (extras || []).forEach(function (x) {
+      var sinCerrar = /^Otro del curso/.test(x.texto);
       var b = L.crear('button', 'otro', x.texto);
       b.type = 'button';
-      b.addEventListener('click', function () { hoja.close(); x.accion(); });
+      b.addEventListener('click', function () { if (!sinCerrar) hoja.close(); x.accion(); });
       cont.appendChild(b);
     });
-    if (hoja.showModal) hoja.showModal(); else hoja.setAttribute('open', '');
+    if (!hoja.open) { if (hoja.showModal) hoja.showModal(); else hoja.setAttribute('open', ''); }
   }
 
   function minutoAhora() {
     var v = vista();
     var seg = (v.p.relojBase || 0) + (v.p.relojInicio ? Math.max(0, Math.floor((v.ahora - v.p.relojInicio) / 1000)) : 0);
     return Math.floor(seg / 60) + 1;
+  }
+
+  function conPersona(base, persona, segundo) {
+    var r = Object.assign({}, base);
+    if (!persona) return r;
+    if (segundo) {
+      if (persona.alumno) r.alumno2 = persona.alumno; else r.jugador2 = persona.jugador;
+      r.nombreJugador2 = persona.nombre;
+    } else {
+      if (persona.alumno) r.alumno = persona.alumno; else r.jugador = persona.jugador;
+      r.nombreJugador = persona.nombre;
+    }
+    return r;
   }
 
   document.querySelectorAll('.arb-equipos button[data-tipo]').forEach(function (b) {
@@ -236,8 +291,7 @@
       var rivales = nominas[lado === 'local' ? 'visita' : 'local'];
       var tipo = b.dataset.tipo;
       var valor = Number(b.dataset.valor || 1);
-      var minuto = minutoAhora();
-      var base = { accion: 'evento', tipo: tipo, equipo: equipo, valor: valor, minuto: minuto };
+      var base = { accion: 'evento', tipo: tipo, equipo: equipo, valor: valor, minuto: minutoAhora() };
 
       if (b.dataset.sinJugador) { encolar(base); return; }
 
@@ -245,27 +299,19 @@
         var extras = [{ texto: 'Sin identificar', accion: function () { encolar(base); } }];
         if (disc.marcador === 'goles') {
           extras.push({ texto: 'Gol en contra (autogol del rival)', accion: function () {
-            elegir('¿Quién hizo el autogol?', rivales, [{ texto: 'Sin identificar', accion: function () { encolar(Object.assign({}, base, { detalle: 'autogol' })); } }], function (j) {
-              encolar(Object.assign({}, base, { detalle: 'autogol', jugador: j.id, nombreJugador: j.nombre }));
-            });
+            var ag = Object.assign({}, base, { detalle: 'autogol' });
+            elegir('¿Quién hizo el autogol?', rivales, [{ texto: 'Sin identificar', accion: function () { encolar(ag); } }], function (j) { encolar(conPersona(ag, j)); });
           } });
         }
-        elegir((disc.marcador === 'goles' ? '¿Quién anotó?' : '¿Quién anotó +' + valor + '?'), propios, extras, function (j) {
-          encolar(Object.assign({}, base, { jugador: j.id, nombreJugador: j.nombre }));
-        });
+        elegir(disc.marcador === 'goles' ? '¿Quién anotó?' : '¿Quién anotó +' + valor + '?', propios, extras, function (j) { encolar(conPersona(base, j)); });
       } else if (tipo === 'amarilla' || tipo === 'roja') {
-        elegir('Tarjeta ' + tipo + ': ¿a quién?', propios, [{ texto: 'Sin identificar', accion: function () { encolar(base); } }], function (j) {
-          encolar(Object.assign({}, base, { jugador: j.id, nombreJugador: j.nombre }));
-        });
+        elegir('Tarjeta ' + tipo + ': ¿a quién?', propios, [{ texto: 'Sin identificar', accion: function () { encolar(base); } }], function (j) { encolar(conPersona(base, j)); });
       } else if (tipo === 'cambio') {
-        elegir('Cambio: ¿quién entra?', propios, [{ texto: 'Omitir', accion: function () { salir(null); } }], function (j) { salir(j); });
         var salir = function (entra) {
-          elegir('Cambio: ¿quién sale?', propios.filter(function (x) { return !entra || x.id !== entra.id; }), [{ texto: 'Omitir', accion: function () {
-            encolar(Object.assign({}, base, entra ? { jugador: entra.id, nombreJugador: entra.nombre } : {}));
-          } }], function (sale) {
-            encolar(Object.assign({}, base, entra ? { jugador: entra.id, nombreJugador: entra.nombre } : {}, { jugador2: sale.id, nombreJugador2: sale.nombre }));
-          });
+          var conEntra = conPersona(base, entra);
+          elegir('Cambio: ¿quién sale?', propios, [{ texto: 'Omitir', accion: function () { encolar(conEntra); } }], function (sale) { encolar(conPersona(conEntra, sale, true)); });
         };
+        elegir('Cambio: ¿quién entra?', propios, [{ texto: 'Omitir', accion: function () { salir(null); } }], function (j) { salir(j); });
       }
     });
   });

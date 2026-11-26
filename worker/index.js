@@ -56,7 +56,7 @@ async function manejar(request, env, ctx) {
   }
 
   // Rutas sin barra final: /fixture → /fixture/
-  if (/^\/(fixture|posiciones|equipos|vivo|tv|entrar|panel)$/.test(ruta)) return redirigir(ruta + '/' + url.search, 301);
+  if (/^\/(fixture|posiciones|equipos|calendario|vivo|tv|entrar|panel)$/.test(ruta)) return redirigir(ruta + '/' + url.search, 301);
 
   await asegurarEsquema(env.DB);
 

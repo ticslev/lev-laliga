@@ -44,7 +44,7 @@
       case 'cambio': return { titulo: 'Cambio en ' + ev.equipo, detalle: [ev.jugador ? 'Entra ' + ev.jugador : '', ev.jugador2 ? 'sale ' + ev.jugador2 : ''].filter(Boolean).join(', ') };
       case 'inicio': return { titulo: n === 1 ? 'Comienza el partido' : 'Comienza el ' + n + '.º ' + periodo, sistema: true };
       case 'entretiempo': return { titulo: 'Fin del ' + n + '.º ' + periodo, sistema: true };
-      case 'fin': return { titulo: 'Final del partido', sistema: true };
+      case 'fin': return { titulo: ev.detalle === 'penales' ? 'Final del partido (se definió por penales)' : 'Final del partido', sistema: true };
       default: return { titulo: ev.detalle || 'Nota', detalle: ev.equipo };
     }
   }

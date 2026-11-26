@@ -93,6 +93,32 @@ const ESQUEMA = [
     creado TEXT NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS eventos_partido ON eventos (partido_id)`,
+  // Cursos y alumnos del colegio (se importan desde el panel; no se guardan correos).
+  `CREATE TABLE IF NOT EXISTS cursos (
+    id INTEGER PRIMARY KEY,
+    nivel TEXT NOT NULL,
+    nombre TEXT NOT NULL,
+    clave TEXT NOT NULL UNIQUE,
+    orden INTEGER NOT NULL DEFAULT 0
+  )`,
+  `CREATE TABLE IF NOT EXISTS alumnos (
+    id INTEGER PRIMARY KEY,
+    curso_id INTEGER NOT NULL REFERENCES cursos(id) ON DELETE CASCADE,
+    nombre_completo TEXT NOT NULL,
+    nombre TEXT NOT NULL,
+    activo INTEGER NOT NULL DEFAULT 1,
+    UNIQUE (curso_id, nombre_completo)
+  )`,
+  `CREATE INDEX IF NOT EXISTS alumnos_curso ON alumnos (curso_id)`,
+  // Días de juego: el N.º de la planificación y la fecha real (se asigna en el panel).
+  `CREATE TABLE IF NOT EXISTS dias_juego (
+    numero INTEGER PRIMARY KEY,
+    fecha TEXT
+  )`,
+  `CREATE TABLE IF NOT EXISTS ajustes (
+    clave TEXT PRIMARY KEY,
+    valor TEXT
+  )`,
   `CREATE TABLE IF NOT EXISTS historial (
     id INTEGER PRIMARY KEY,
     usuario TEXT,
@@ -101,12 +127,58 @@ const ESQUEMA = [
   )`,
 ];
 
+// Columnas agregadas después de la primera versión: se crean solas si faltan.
+const COLUMNAS = {
+  torneos: {
+    competencia: "TEXT NOT NULL DEFAULT ''",
+    rama: "TEXT NOT NULL DEFAULT 'mixto'",
+    desempate: "TEXT NOT NULL DEFAULT 'ganados'",
+  },
+  equipos: {
+    grupo: 'TEXT',
+    exhibicion: 'INTEGER NOT NULL DEFAULT 0',
+    desempate: 'INTEGER NOT NULL DEFAULT 0',
+    curso_id: 'INTEGER',
+  },
+  jugadores: {
+    alumno_id: 'INTEGER',
+    convocado: 'INTEGER NOT NULL DEFAULT 1',
+  },
+  partidos: {
+    dia: 'INTEGER',
+    hora: 'TEXT',
+    llave: 'TEXT',
+    codigo_local: 'TEXT',
+    codigo_visita: 'TEXT',
+    etiqueta_local: 'TEXT',
+    etiqueta_visita: 'TEXT',
+    ganador: 'TEXT',
+    marcador: 'INTEGER NOT NULL DEFAULT 1',
+  },
+};
+
+async function migrar(db) {
+  const sentencias = [];
+  for (const [tabla, columnas] of Object.entries(COLUMNAS)) {
+    const existentes = new Set(((await db.prepare(`PRAGMA table_info(${tabla})`).all()).results || []).map((c) => c.name));
+    for (const [col, tipo] of Object.entries(columnas)) {
+      if (!existentes.has(col)) sentencias.push(db.prepare(`ALTER TABLE ${tabla} ADD COLUMN ${col} ${tipo}`));
+    }
+  }
+  if (sentencias.length) await db.batch(sentencias);
+  await db.batch([
+    db.prepare('CREATE INDEX IF NOT EXISTS partidos_dia ON partidos (dia)'),
+    db.prepare('CREATE INDEX IF NOT EXISTS jugadores_alumno ON jugadores (alumno_id)'),
+  ]);
+}
+
 let listo = null;
 
 export function asegurarEsquema(db) {
   if (!listo) {
     listo = db
       .batch(ESQUEMA.map((sql) => db.prepare(sql)))
+      .then(() => migrar(db))
       .catch((e) => {
         listo = null;
         throw e;
@@ -130,4 +202,18 @@ export async function ejecutar(db, sql, ...params) {
 
 export async function anotar(db, usuario, accion) {
   await ejecutar(db, 'INSERT INTO historial (usuario, accion, fecha) VALUES (?, ?, ?)', usuario || null, accion, new Date().toISOString());
+}
+
+export async function ajuste(db, clave, porDefecto = null) {
+  const r = await uno(db, 'SELECT valor FROM ajustes WHERE clave = ?', clave);
+  return r ? r.valor : porDefecto;
+}
+
+export async function guardarAjuste(db, clave, valor) {
+  await ejecutar(db, 'INSERT INTO ajustes (clave, valor) VALUES (?, ?) ON CONFLICT (clave) DO UPDATE SET valor = excluded.valor', clave, valor);
+}
+
+// Ejecuta muchas sentencias en tandas (D1 acepta lotes, pero conviene no hacerlos gigantes).
+export async function enTandas(db, sentencias, tam = 80) {
+  for (let i = 0; i < sentencias.length; i += tam) await db.batch(sentencias.slice(i, i + tam));
 }

@@ -2,7 +2,8 @@
 // Cada acción guarda en D1 y avisa a la sala en vivo del partido.
 import { uno, ejecutar, anotar } from './db.js';
 import { json, error, entero, textoCorto, ahoraISO } from './util.js';
-import { estadoPartido, recalcularMarcador, segundosReloj, minutoActual, jugadoresDe, partido as leerPartido, disciplina } from './datos.js';
+import { estadoPartido, recalcularMarcador, segundosReloj, minutoActual, convocadosDe, alumnosDelEquipo, partido as leerPartido, disciplina, ganadorFinal, completarCruces } from './datos.js';
+import { nombreOrdenado } from './util.js';
 import { avisar } from './vivo.js';
 
 export function puedeArbitrar(yo, p) {
@@ -69,16 +70,20 @@ export async function accionArbitro(request, env, ctx, yo, partidoId) {
       await ejecutar(db, `UPDATE partidos SET estado = 'entretiempo', reloj_base = ?, reloj_inicio = NULL, actualizado = ? WHERE id = ?`, acumulado, iso, partidoId);
       await evento('entretiempo', { minuto: Math.max(1, Math.ceil(acumulado / 60)) });
       break;
-    case 'finalizar':
+    case 'finalizar': {
       if (p.estado === 'programado') return error('El partido no ha empezado.', 409);
-      await ejecutar(db, `UPDATE partidos SET estado = 'finalizado', reloj_base = ?, reloj_inicio = NULL, actualizado = ? WHERE id = ?`, acumulado, iso, partidoId);
-      await evento('fin', { minuto: Math.max(1, Math.ceil(acumulado / 60)) });
+      const ganador = ganadorFinal(p, p, datos.ganador);
+      if (!ganador) return error('El partido está empatado y en esta fase debe haber un ganador: elige quién ganó (por ejemplo, en penales).', 409);
+      await ejecutar(db, `UPDATE partidos SET estado = 'finalizado', ganador = ?, reloj_base = ?, reloj_inicio = NULL, actualizado = ? WHERE id = ?`, ganador, acumulado, iso, partidoId);
+      await evento('fin', { minuto: Math.max(1, Math.ceil(acumulado / 60)), detalle: datos.ganador && p.goles_local === p.goles_visita ? 'penales' : null });
       await anotar(db, yo.email, `Finalizó el partido #${partidoId} (${p.goles_local}–${p.goles_visita})`);
+      await completarCruces(db, p.torneo_id);
       break;
+    }
     case 'reabrir':
       if (!yo.editor) return error('Solo un editor puede reabrir un partido terminado.', 403);
       // Vuelve al último periodo con el reloj detenido, para corregir o seguir.
-      await ejecutar(db, `UPDATE partidos SET estado = 'en_vivo', reloj_inicio = NULL, actualizado = ? WHERE id = ?`, iso, partidoId);
+      await ejecutar(db, `UPDATE partidos SET estado = 'en_vivo', ganador = NULL, reloj_inicio = NULL, actualizado = ? WHERE id = ?`, iso, partidoId);
       await ejecutar(db, `UPDATE eventos SET anulado = 1 WHERE partido_id = ? AND tipo = 'fin'`, partidoId);
       await anotar(db, yo.email, `Reabrió el partido #${partidoId}`);
       break;
@@ -102,8 +107,18 @@ export async function accionArbitro(request, env, ctx, yo, partidoId) {
         const j = await uno(db, 'SELECT id FROM jugadores WHERE id = ? AND equipo_id = ?', Number(id), tipo === 'cambio' ? equipo : equipoJugador);
         return j ? j.id : undefined;
       };
-      const jugador = await validarJugador(datos.jugador);
-      const jugador2 = tipo === 'cambio' ? await validarJugador(datos.jugador2) : null;
+      // Alumno del curso que no estaba convocado: se agrega al equipo (sin marcarlo como convocado).
+      const desdeAlumno = async (alumnoId, equipoDelAlumno) => {
+        if (alumnoId === null || alumnoId === undefined || alumnoId === '') return null;
+        const a = await uno(db, `SELECT a.id, a.nombre FROM alumnos a JOIN equipos q ON q.curso_id = a.curso_id WHERE a.id = ? AND q.id = ?`, Number(alumnoId), equipoDelAlumno);
+        if (!a) return undefined;
+        const ya = await uno(db, 'SELECT id FROM jugadores WHERE equipo_id = ? AND alumno_id = ?', equipoDelAlumno, a.id);
+        if (ya) return ya.id;
+        const r = await ejecutar(db, 'INSERT INTO jugadores (equipo_id, nombre, alumno_id, convocado, activo) VALUES (?, ?, ?, 0, 1)', equipoDelAlumno, a.nombre, a.id);
+        return r.meta.last_row_id;
+      };
+      const jugador = datos.alumno ? await desdeAlumno(datos.alumno, tipo === 'cambio' ? equipo : equipoJugador) : await validarJugador(datos.jugador);
+      const jugador2 = tipo === 'cambio' ? (datos.alumno2 ? await desdeAlumno(datos.alumno2, equipo) : await validarJugador(datos.jugador2)) : null;
       if (jugador === undefined || jugador2 === undefined) return error('Ese jugador no es de este equipo.');
       const d = disciplina(p);
       const valores = new Set(d.botones.map((b) => b.valor));
@@ -139,11 +154,16 @@ export async function accionArbitro(request, env, ctx, yo, partidoId) {
 export async function datosArbitro(db, partidoId) {
   const p = await leerPartido(db, partidoId);
   if (!p) return null;
-  const [estado, local, visita] = await Promise.all([
-    estadoPartido(db, partidoId),
-    p.local_id ? jugadoresDe(db, p.local_id) : [],
-    p.visita_id ? jugadoresDe(db, p.visita_id) : [],
-  ]);
-  const limpiar = (lista) => lista.filter((j) => j.activo).map((j) => ({ id: j.id, nombre: j.nombre, dorsal: j.dorsal }));
-  return { p, estado, nominas: { local: limpiar(local), visita: limpiar(visita) }, disciplina: disciplina(p) };
+  // Para cada equipo: convocados (si el tutor los marcó) y todo el curso para buscar.
+  const nomina = async (equipoId) => {
+    if (!equipoId) return { convocados: [], curso: [] };
+    const [convocados, curso] = await Promise.all([convocadosDe(db, equipoId), alumnosDelEquipo(db, equipoId)]);
+    const ya = new Set(convocados.map((j) => j.alumno_id).filter(Boolean));
+    return {
+      convocados: convocados.map((j) => ({ id: j.id, nombre: j.nombre, dorsal: j.dorsal })),
+      curso: curso.filter((a) => !ya.has(a.id)).map((a) => ({ alumno: a.id, nombre: nombreOrdenado(a.nombre_completo) })),
+    };
+  };
+  const [estado, local, visita] = await Promise.all([estadoPartido(db, partidoId), nomina(p.local_id), nomina(p.visita_id)]);
+  return { p, estado, nominas: { local, visita }, disciplina: disciplina(p) };
 }

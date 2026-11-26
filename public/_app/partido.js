@@ -28,7 +28,10 @@
 
   function pintar() {
     var p = estado.partido;
-    if (p.estado !== 'programado') {
+    if (p.estado === 'finalizado' && !p.marcador) {
+      marcador.textContent = '';
+      marcador.appendChild(L.crear('small', '', p.ganador === 'empate' ? 'EMPATE' : 'GANÓ ' + (p.ganador === 'local' ? p.local.nombre : p.visita.nombre).toUpperCase()));
+    } else if (p.estado !== 'programado') {
       marcador.textContent = '';
       marcador.appendChild(document.createTextNode(p.golesLocal + ' '));
       marcador.appendChild(L.crear('i', '', '–'));

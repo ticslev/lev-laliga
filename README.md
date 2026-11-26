@@ -13,7 +13,8 @@ Corre en un **Cloudflare Worker** con base de datos **D1** y un **Durable Object
   - próximos partidos;
   - posiciones y goleadores;
   - acceso a cada torneo.
-- `/fixture/`: jornadas por torneo (disciplina + nivel), la fase final y el botón **Agregar a mi calendario** (archivo `.ics`).
+- `/calendario/`: todos los partidos por día de juego, con filtro por competencia.
+- `/fixture/`: rondas por torneo (disciplina + nivel), la fase final y el botón **Agregar a mi calendario** (archivo `.ics`).
 - `/posiciones/`: tabla completa con los últimos 5 resultados, goleadores o anotadores, fair play, **suspendidos para la próxima fecha** y reglamento.
 - `/equipos/` y `/equipos/<id>/`: ficha con plantilla, goles y tarjetas por jugador, partidos y rendimiento.
 - `/partido/<id>/`: marcador, reloj, minuto a minuto, nóminas, animación de **¡GOL!** y botón Compartir. Se actualiza al instante por WebSocket; si no puede conectarse, consulta cada 5 segundos.
@@ -59,6 +60,28 @@ La primera vez que alguien entra queda **pendiente** hasta que un administrador 
    - `ADMINS`: tu correo (puedes poner varios, separados por comas).
 5. **Dominio:** borra el registro DNS `laliga` si existe. Luego Worker → *Settings* → *Domains & Routes* → *Add* → *Custom domain* → `laliga.lev.edu.ec`.
 6. Entra a `https://laliga.lev.edu.ec/panel/` con tu cuenta. En el inicio puedes **cargar datos de ejemplo** para ver todo funcionando; se borran después desde cada torneo con *Borrar torneo*.
+
+## Cargar el campeonato desde Excel
+
+En el panel → **Importar desde Excel** (solo para administradores):
+
+1. **Archivos.** Elige el Excel del campeonato, que debe tener la hoja **Calendario** con las columnas N.°, Día de juego, Horario, Cancha, Deporte, Rama, Nivel / Grupo, Fase, Equipo 1 y Equipo 2. Si quieres, elige también la lista de alumnos (Nivel, Paralelo y Estudiante).
+2. **Vista previa.** Antes de importar se ven los partidos por competencia, los equipos de exhibición y si todos los equipos coinciden con un paralelo.
+3. **Importar.** Se crea un torneo por competencia y nivel (por ejemplo "Fútbol masculino · 7mo de básica"). Los equipos quedan unidos a su curso. En Bachillerato se respetan los grupos A y B.
+   - Los partidos "1º …", "1º Grupo A" y "Ganador Semifinal 1" quedan **por definir** y se llenan solos.
+   - Los equipos cuyo nombre empieza por "Profes" son de **exhibición**: juegan, pero no cuentan en la tabla.
+4. **Días de juego:** pon la fecha del primer día y los días de la semana en que se juega (y los feriados). Las demás fechas se calculan solas. **Posponer** corre ese día y los siguientes al próximo día de clases.
+
+Privacidad: los archivos se leen en el navegador y no se suben a GitHub. Los correos no se envían. En el sitio público solo aparece "Nombre I." (por ejemplo, "Victoria A."); el nombre completo solo lo ven los encargados.
+
+## Resultados y tabla
+
+- **Resultado rápido** (como en el Excel): en *Días de juego → Resultados*, toca el equipo que ganó o *Empate* (solo en fútbol y en fase de grupos).
+- **Partido completo:** desde el panel del árbitro (goles, tarjetas, cambios y reloj). Para anotar a un jugador, el árbitro ve primero a los **convocados** que marcó el tutor y puede buscar en **todo el curso**. Si nadie marcó convocados, elige directamente entre todo el curso.
+- **Puntos** (según el reglamento): fútbol 3, 1 y 0; básquet 2 al ganador y 1 al perdedor.
+- **Orden de la tabla:** puntos, partidos ganados y partido de desempate.
+- **Empates por resolver:** si dos equipos quedan iguales en un puesto que importa, el panel lo avisa y no llena la fase final hasta que se anote 1 en la columna *Desempate* al ganador del partido extra.
+- **Semifinales y finales:** no hay empate. Si se definió por penales, el árbitro o el editor elige quién ganó.
 
 ## Uso típico
 

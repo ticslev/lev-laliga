@@ -3,11 +3,17 @@ import { uno, todos } from './db.js';
 import { html, json, error, hoyEcuador, ahoraEcuador, e } from './util.js';
 import {
   torneosVisibles, torneoPorSlug, partidosDeTorneo, partidosEnJuego, proximosPartidos, ultimosResultados,
-  partidosDeEquipo, partido as leerPartido, estadoPartido, jugadoresDe, posiciones, anotadores, fairPlay, suspendidos,
+  partidosDeEquipo, partido as leerPartido, estadoPartido, jugadoresDe, convocadosDe, posiciones, anotadores, fairPlay, suspendidos,
   disciplina, segundosReloj,
 } from './datos.js';
+
+const SELECT_LISTA = `SELECT p.*, t.nombre AS torneo_nombre, t.slug AS torneo_slug, t.disciplina, t.nivel, t.competencia,
+    l.nombre AS local_nombre, l.sigla AS local_sigla, l.color AS local_color,
+    v.nombre AS visita_nombre, v.sigla AS visita_sigla, v.color AS visita_color
+  FROM partidos p JOIN torneos t ON t.id = p.torneo_id
+  LEFT JOIN equipos l ON l.id = p.local_id LEFT JOIN equipos v ON v.id = p.visita_id`;
 import {
-  vistaPortada, vistaFixture, vistaPosiciones, vistaEquipos, vistaEquipo, vistaPartido, vistaVivo, vistaTv, vistaEntrar, vista404,
+  vistaPortada, vistaFixture, vistaPosiciones, vistaEquipos, vistaEquipo, vistaPartido, vistaVivo, vistaTv, vistaEntrar, vista404, vistaCalendario,
 } from './vistas/publico.js';
 import { conectar } from './vivo.js';
 
@@ -43,10 +49,11 @@ export async function rutaPublica(request, env, url) {
     }
     if (ruta === '/posiciones/') {
       if (!torneo) return html(vistaPosiciones({ torneos, torneo, enVivo }));
-      const [tabla, anotadoresLista, fair, susp] = await Promise.all([
+      const [tabla, anotadoresLista, fair, susp, posFinales] = await Promise.all([
         posiciones(db, torneo), anotadores(db, [torneo.id], 10), fairPlay(db, torneo.id), suspendidos(db, torneo),
+        todos(db, `${SELECT_LISTA} WHERE p.torneo_id = ? AND p.fase NOT IN ('grupos','amistoso') ORDER BY p.dia, p.fecha, p.llave`, torneo.id),
       ]);
-      return html(vistaPosiciones({ torneos, torneo, tabla, anotadoresLista, fair, susp, enVivo }));
+      return html(vistaPosiciones({ torneos, torneo, tabla, anotadoresLista, fair, susp, enVivo, posFinales }));
     }
     const equipos = torneo
       ? await todos(db, `SELECT eq.*, (SELECT COUNT(*) FROM jugadores j WHERE j.equipo_id = eq.id AND j.activo = 1) AS jugadores
@@ -61,7 +68,7 @@ export async function rutaPublica(request, env, url) {
     if (!equipo) return null;
     const torneo = await uno(db, 'SELECT * FROM torneos WHERE id = ? AND visible = 1', equipo.torneo_id);
     if (!torneo) return null;
-    const [jugadores, partidos, tabla, an, ta, enJuego] = await Promise.all([
+    const [jugadores, partidos, tabla, an, ta, enJuego, curso] = await Promise.all([
       jugadoresDe(db, equipo.id),
       partidosDeEquipo(db, equipo.id),
       posiciones(db, torneo),
@@ -70,10 +77,17 @@ export async function rutaPublica(request, env, url) {
       todos(db, `SELECT jugador_id, SUM(tipo = 'amarilla') AS amarillas, SUM(tipo = 'roja') AS rojas FROM eventos
         WHERE tipo IN ('amarilla','roja') AND anulado = 0 AND jugador_id IN (SELECT id FROM jugadores WHERE equipo_id = ?) GROUP BY jugador_id`, equipo.id),
       partidosEnJuego(db),
+      equipo.curso_id ? uno(db, 'SELECT nivel, nombre FROM cursos WHERE id = ?', equipo.curso_id) : null,
     ]);
     const i = tabla.findIndex((f) => f.id === equipo.id);
+    // Plantilla: los convocados; si no hay, quienes ya anotaron o recibieron tarjetas.
+    const convocados = jugadores.filter((j) => j.convocado && j.activo);
+    const conRegistro = new Set([...an.map((a) => a.jugador_id), ...ta.map((t) => t.jugador_id)]);
+    const lista = convocados.length ? convocados : jugadores.filter((j) => conRegistro.has(j.id));
     return html(vistaEquipo({
-      equipo, torneo, jugadores, partidos, fila: tabla[i], posicion: i >= 0 && tabla[i].pj ? i + 1 : null,
+      equipo, torneo, jugadores: lista, tituloPlantilla: convocados.length ? 'CONVOCADOS' : 'JUGADORES DESTACADOS',
+      curso: curso ? `${curso.nivel} ${curso.nombre}` : null,
+      partidos, fila: tabla[i], posicion: i >= 0 && tabla[i].pj ? tabla[i].pos : null,
       anotacionesPor: new Map(an.map((a) => [a.jugador_id, a.total])),
       tarjetasPor: new Map(ta.map((t) => [t.jugador_id, t])),
       enVivo: enJuego.length > 0,
@@ -88,8 +102,8 @@ export async function rutaPublica(request, env, url) {
     if (!torneo?.visible) return null;
     const [estado, jugadoresLocal, jugadoresVisita, enJuego] = await Promise.all([
       estadoPartido(db, p.id),
-      p.local_id ? jugadoresDe(db, p.local_id) : [],
-      p.visita_id ? jugadoresDe(db, p.visita_id) : [],
+      p.local_id ? convocadosDe(db, p.local_id) : [],
+      p.visita_id ? convocadosDe(db, p.visita_id) : [],
       partidosEnJuego(db),
     ]);
     return html(vistaPartido({ estado, p, jugadoresLocal, jugadoresVisita, enVivo: enJuego.length > 0 }));
@@ -99,14 +113,26 @@ export async function rutaPublica(request, env, url) {
     const hoy = hoyEcuador();
     const [enJuego, deHoy] = await Promise.all([
       partidosEnJuego(db),
-      todos(db, `SELECT p.*, t.nombre AS torneo_nombre, t.disciplina, t.nivel,
-          l.nombre AS local_nombre, l.sigla AS local_sigla, l.color AS local_color,
-          v.nombre AS visita_nombre, v.sigla AS visita_sigla, v.color AS visita_color
-        FROM partidos p JOIN torneos t ON t.id = p.torneo_id
-        LEFT JOIN equipos l ON l.id = p.local_id LEFT JOIN equipos v ON v.id = p.visita_id
-        WHERE t.visible = 1 AND substr(p.fecha, 1, 10) = ? AND p.estado NOT IN ('en_vivo','entretiempo') ORDER BY p.fecha`, hoy),
+      todos(db, `${SELECT_LISTA} WHERE t.visible = 1 AND substr(p.fecha, 1, 10) = ? AND p.estado NOT IN ('en_vivo','entretiempo') ORDER BY p.fecha, p.lugar`, hoy),
     ]);
     return html(vistaVivo({ enJuego, hoy: deHoy }));
+  }
+
+  if (ruta === '/calendario/') {
+    const filtro = url.searchParams.get('c') || null;
+    const [lista, enJuego, comps] = await Promise.all([
+      todos(db, `${SELECT_LISTA} WHERE t.visible = 1 AND p.dia IS NOT NULL ${filtro ? 'AND t.competencia = ?' : ''}
+        ORDER BY p.dia, p.hora, p.lugar, p.id`, ...(filtro ? [filtro] : [])),
+      partidosEnJuego(db),
+      todos(db, `SELECT competencia, MIN(orden) AS o FROM torneos WHERE visible = 1 AND competencia != '' GROUP BY competencia ORDER BY o`),
+    ]);
+    const fechas = new Map((await todos(db, 'SELECT numero, fecha FROM dias_juego')).map((d) => [d.numero, d.fecha]));
+    const dias = [];
+    for (const p of lista) {
+      if (!dias.length || dias[dias.length - 1].numero !== p.dia) dias.push({ numero: p.dia, fecha: fechas.get(p.dia) || null, partidos: [] });
+      dias[dias.length - 1].partidos.push(p);
+    }
+    return html(vistaCalendario({ dias, enVivo: enJuego.length > 0, competenciasLista: comps.map((c) => c.competencia), filtro }));
   }
 
   if (ruta === '/tv/') {

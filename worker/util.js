@@ -209,3 +209,58 @@ export const COLORES = {
 export function colorValido(c) {
   return Object.hasOwn(COLORES, c) ? c : 'morado';
 }
+
+// ---------- Nombres de estudiantes ----------
+// "ALVAREZ ORTEGA VICTORIA" → { nombres: "Victoria", apellido: "Álvarez" } → público: "Victoria A."
+const PARTICULAS = new Set(['DE', 'DEL', 'LA', 'LAS', 'LOS', 'SAN', 'SANTA', 'Y', 'VAN', 'VON', 'DA', 'DI', 'MC', 'MAC']);
+
+export function titulo(texto) {
+  return String(texto || '').toLowerCase().replace(/(^|[\s-])(\p{L})/gu, (m, a, b) => a + b.toUpperCase());
+}
+
+export function partirNombre(completo) {
+  const t = String(completo || '').trim().split(/\s+/).filter(Boolean);
+  const tomarApellido = () => {
+    const partes = [];
+    while (t.length && PARTICULAS.has(t[0].toUpperCase())) partes.push(t.shift());
+    if (t.length) partes.push(t.shift());
+    return partes.join(' ');
+  };
+  const ap1 = tomarApellido();
+  // Con 3 o más palabras restantes se asume un segundo apellido; con menos, lo que queda son nombres.
+  const ap2 = t.length >= 2 ? tomarApellido() : '';
+  const nombres = t.join(' ');
+  return { apellido: titulo(ap1), apellido2: titulo(ap2), nombres: titulo(nombres || ap2 || ap1) };
+}
+
+export function nombreCorto(completo) {
+  const { apellido, nombres } = partirNombre(completo);
+  const primero = nombres.split(' ')[0] || '';
+  const inicial = (apellido.split(' ').find((p) => !PARTICULAS.has(p.toUpperCase())) || apellido)[0] || '';
+  return `${primero} ${inicial ? inicial.toUpperCase() + '.' : ''}`.trim();
+}
+
+export function nombreOrdenado(completo) {
+  const { apellido, apellido2, nombres } = partirNombre(completo);
+  return `${nombres} ${apellido}${apellido2 ? ' ' + apellido2 : ''}`.trim();
+}
+
+// Quita tildes y pasa a mayúsculas, para comparar nombres de cursos.
+export function claveTexto(texto) {
+  return String(texto || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
+}
+
+// Sigla de 3 letras que no se repita dentro del torneo: Amables → AMA, Amigables → AMI, Amistosos → AMS.
+export function siglaUnica(nombre, usadas) {
+  const letras = claveTexto(nombre).replace(/[^A-Z0-9]/g, '');
+  if (!letras) return '?';
+  for (let i = 2; i < letras.length; i++) {
+    const s = letras[0] + letras[1] + letras[i];
+    if (!usadas.has(s)) { usadas.add(s); return s; }
+  }
+  for (let n = 2; n < 99; n++) {
+    const s = letras.slice(0, 2) + n;
+    if (!usadas.has(s)) { usadas.add(s); return s; }
+  }
+  return letras.slice(0, 3);
+}
