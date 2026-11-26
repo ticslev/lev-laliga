@@ -1,0 +1,198 @@
+// Rutas públicas: arman los datos y llaman a las vistas.
+import { uno, todos } from './db.js';
+import { html, json, error, hoyEcuador, ahoraEcuador, e } from './util.js';
+import {
+  torneosVisibles, torneoPorSlug, partidosDeTorneo, partidosEnJuego, proximosPartidos, ultimosResultados,
+  partidosDeEquipo, partido as leerPartido, estadoPartido, jugadoresDe, posiciones, anotadores, fairPlay, suspendidos,
+  disciplina, segundosReloj,
+} from './datos.js';
+import {
+  vistaPortada, vistaFixture, vistaPosiciones, vistaEquipos, vistaEquipo, vistaPartido, vistaVivo, vistaTv, vistaEntrar, vista404,
+} from './vistas/publico.js';
+import { conectar } from './vivo.js';
+
+function elegirTorneo(torneos, url) {
+  const s = url.searchParams.get('t');
+  return torneos.find((t) => t.slug === s) || torneos[0] || null;
+}
+
+export async function rutaPublica(request, env, url) {
+  const db = env.DB;
+  const ruta = url.pathname;
+
+  if (ruta === '/') {
+    const [enJuego, proximos, resultados, torneos] = await Promise.all([
+      partidosEnJuego(db), proximosPartidos(db, hoyEcuador()), ultimosResultados(db), torneosVisibles(db),
+    ]);
+    // Torneo destacado: el del partido en vivo, o el primero con partidos jugados.
+    const idDestacado = enJuego[0]?.torneo_id || resultados[0]?.torneo_id || torneos[0]?.id;
+    const destacado = torneos.find((t) => t.id === idDestacado) || null;
+    const tabla = destacado ? await posiciones(db, destacado) : [];
+    const idsGoles = torneos.filter((t) => disciplina(t).marcador === 'goles').map((t) => t.id);
+    const anotadoresTop = await anotadores(db, idsGoles, 5);
+    return html(vistaPortada({ enJuego, proximos, resultados, torneos, destacado, tabla, anotadoresTop }));
+  }
+
+  if (ruta === '/fixture/' || ruta === '/posiciones/' || ruta === '/equipos/') {
+    const torneos = await torneosVisibles(db);
+    const torneo = elegirTorneo(torneos, url);
+    const enVivo = (await partidosEnJuego(db)).length > 0;
+    if (ruta === '/fixture/') {
+      const partidos = torneo ? await partidosDeTorneo(db, torneo.id) : [];
+      return html(vistaFixture({ torneos, torneo, partidos, enVivo }));
+    }
+    if (ruta === '/posiciones/') {
+      if (!torneo) return html(vistaPosiciones({ torneos, torneo, enVivo }));
+      const [tabla, anotadoresLista, fair, susp] = await Promise.all([
+        posiciones(db, torneo), anotadores(db, [torneo.id], 10), fairPlay(db, torneo.id), suspendidos(db, torneo),
+      ]);
+      return html(vistaPosiciones({ torneos, torneo, tabla, anotadoresLista, fair, susp, enVivo }));
+    }
+    const equipos = torneo
+      ? await todos(db, `SELECT eq.*, (SELECT COUNT(*) FROM jugadores j WHERE j.equipo_id = eq.id AND j.activo = 1) AS jugadores
+          FROM equipos eq WHERE eq.torneo_id = ? ORDER BY eq.nombre`, torneo.id)
+      : [];
+    return html(vistaEquipos({ torneos, torneo, equipos, enVivo }));
+  }
+
+  let m = ruta.match(/^\/equipos\/(\d+)\/$/);
+  if (m) {
+    const equipo = await uno(db, 'SELECT * FROM equipos WHERE id = ?', Number(m[1]));
+    if (!equipo) return null;
+    const torneo = await uno(db, 'SELECT * FROM torneos WHERE id = ? AND visible = 1', equipo.torneo_id);
+    if (!torneo) return null;
+    const [jugadores, partidos, tabla, an, ta, enJuego] = await Promise.all([
+      jugadoresDe(db, equipo.id),
+      partidosDeEquipo(db, equipo.id),
+      posiciones(db, torneo),
+      todos(db, `SELECT jugador_id, SUM(valor) AS total FROM eventos WHERE tipo = 'gol' AND anulado = 0 AND (detalle IS NULL OR detalle != 'autogol')
+        AND jugador_id IN (SELECT id FROM jugadores WHERE equipo_id = ?) GROUP BY jugador_id`, equipo.id),
+      todos(db, `SELECT jugador_id, SUM(tipo = 'amarilla') AS amarillas, SUM(tipo = 'roja') AS rojas FROM eventos
+        WHERE tipo IN ('amarilla','roja') AND anulado = 0 AND jugador_id IN (SELECT id FROM jugadores WHERE equipo_id = ?) GROUP BY jugador_id`, equipo.id),
+      partidosEnJuego(db),
+    ]);
+    const i = tabla.findIndex((f) => f.id === equipo.id);
+    return html(vistaEquipo({
+      equipo, torneo, jugadores, partidos, fila: tabla[i], posicion: i >= 0 && tabla[i].pj ? i + 1 : null,
+      anotacionesPor: new Map(an.map((a) => [a.jugador_id, a.total])),
+      tarjetasPor: new Map(ta.map((t) => [t.jugador_id, t])),
+      enVivo: enJuego.length > 0,
+    }));
+  }
+
+  m = ruta.match(/^\/partido\/(\d+)\/$/);
+  if (m) {
+    const p = await leerPartido(db, Number(m[1]));
+    if (!p) return null;
+    const torneo = await uno(db, 'SELECT visible FROM torneos WHERE id = ?', p.torneo_id);
+    if (!torneo?.visible) return null;
+    const [estado, jugadoresLocal, jugadoresVisita, enJuego] = await Promise.all([
+      estadoPartido(db, p.id),
+      p.local_id ? jugadoresDe(db, p.local_id) : [],
+      p.visita_id ? jugadoresDe(db, p.visita_id) : [],
+      partidosEnJuego(db),
+    ]);
+    return html(vistaPartido({ estado, p, jugadoresLocal, jugadoresVisita, enVivo: enJuego.length > 0 }));
+  }
+
+  if (ruta === '/vivo/') {
+    const hoy = hoyEcuador();
+    const [enJuego, deHoy] = await Promise.all([
+      partidosEnJuego(db),
+      todos(db, `SELECT p.*, t.nombre AS torneo_nombre, t.disciplina, t.nivel,
+          l.nombre AS local_nombre, l.sigla AS local_sigla, l.color AS local_color,
+          v.nombre AS visita_nombre, v.sigla AS visita_sigla, v.color AS visita_color
+        FROM partidos p JOIN torneos t ON t.id = p.torneo_id
+        LEFT JOIN equipos l ON l.id = p.local_id LEFT JOIN equipos v ON v.id = p.visita_id
+        WHERE t.visible = 1 AND substr(p.fecha, 1, 10) = ? AND p.estado NOT IN ('en_vivo','entretiempo') ORDER BY p.fecha`, hoy),
+    ]);
+    return html(vistaVivo({ enJuego, hoy: deHoy }));
+  }
+
+  if (ruta === '/tv/') {
+    const [enJuego, proximos, resultados] = await Promise.all([
+      partidosEnJuego(db), proximosPartidos(db, hoyEcuador(), 5), ultimosResultados(db, 6),
+    ]);
+    return html(vistaTv({ enJuego, proximos, resultados }));
+  }
+
+  if (ruta === '/entrar/') return html(vistaEntrar(url.searchParams.get('estado'), url.searchParams.get('siguiente')));
+
+  m = ruta.match(/^\/calendario\/([a-z0-9-]+)\.ics$/);
+  if (m) {
+    const torneo = await torneoPorSlug(db, m[1]);
+    if (!torneo || !torneo.visible) return null;
+    return calendario(torneo, await partidosDeTorneo(db, torneo.id), url);
+  }
+
+  return null;
+}
+
+// ---------- API pública (para actualizar sin recargar) ----------
+
+export async function apiPublica(request, env, url, ctx) {
+  const db = env.DB;
+  const ruta = url.pathname;
+
+  if (ruta === '/api/vivo') {
+    const lista = await partidosEnJuego(db);
+    return json({
+      ahora: Date.now(),
+      partidos: lista.map((p) => ({
+        id: p.id, estado: p.estado, golesLocal: p.goles_local, golesVisita: p.goles_visita,
+        relojBase: p.reloj_base, relojInicio: p.reloj_inicio, periodo: p.periodo,
+      })),
+    });
+  }
+
+  let m = ruta.match(/^\/api\/partido\/(\d+)$/);
+  if (m) {
+    const estado = await estadoPartido(db, Number(m[1]));
+    if (!estado) return error('Ese partido no existe.', 404);
+    return json(estado);
+  }
+
+  m = ruta.match(/^\/api\/partido\/(\d+)\/ws$/);
+  if (m) return conectar(env, request, Number(m[1]));
+
+  return null;
+}
+
+// ---------- Calendario (ICS) para Google Calendar o el celular ----------
+
+function calendario(torneo, partidos, url) {
+  const ics = (t) => String(t || '').replace(/([,;\\])/g, '\\$1').replace(/\n/g, '\\n');
+  const fechaICS = (f) => f.replace(/[-:]/g, '').slice(0, 13) + '00';
+  const sumarMin = (f, min) => {
+    const d = new Date(f + ':00Z');
+    d.setUTCMinutes(d.getUTCMinutes() + min);
+    return d.toISOString().slice(0, 16);
+  };
+  const duracion = Math.max(30, torneo.periodos * torneo.minutos_periodo + 15);
+  const eventos = partidos.filter((p) => p.fecha && p.fecha.length > 10).map((p) => [
+    'BEGIN:VEVENT',
+    `UID:partido-${p.id}@${url.hostname}`,
+    `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`,
+    `DTSTART;TZID=America/Guayaquil:${fechaICS(p.fecha)}`,
+    `DTEND;TZID=America/Guayaquil:${fechaICS(sumarMin(p.fecha, duracion))}`,
+    `SUMMARY:${ics(`${p.local_nombre || '?'} vs ${p.visita_nombre || '?'}`)}`,
+    `LOCATION:${ics(p.lugar || '')}`,
+    `DESCRIPTION:${ics(`${torneo.nombre}\n${url.origin}/partido/${p.id}/`)}`,
+    'END:VEVENT',
+  ].join('\r\n'));
+  const cuerpo = [
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Lev Vygotsky//La Liga Lev//ES', 'CALSCALE:GREGORIAN',
+    `X-WR-CALNAME:${ics(`La Liga Lev · ${torneo.nombre}`)}`, 'X-WR-TIMEZONE:America/Guayaquil',
+    'BEGIN:VTIMEZONE', 'TZID:America/Guayaquil', 'BEGIN:STANDARD', 'DTSTART:19700101T000000', 'TZOFFSETFROM:-0500', 'TZOFFSETTO:-0500', 'TZNAME:-05', 'END:STANDARD', 'END:VTIMEZONE',
+    ...eventos, 'END:VCALENDAR',
+  ].join('\r\n');
+  return new Response(cuerpo, {
+    headers: { 'Content-Type': 'text/calendar; charset=utf-8', 'Content-Disposition': `inline; filename="${torneo.slug}.ics"`, 'Cache-Control': 'public, max-age=300' },
+  });
+}
+
+export function noEncontrado() {
+  return html(vista404(), 404);
+}
+
+export { segundosReloj, ahoraEcuador, e };

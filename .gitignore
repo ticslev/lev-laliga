@@ -1,0 +1,5 @@
+node_modules/
+public/_app/fonts/
+pruebas/.datos/
+.wrangler/
+.DS_Store

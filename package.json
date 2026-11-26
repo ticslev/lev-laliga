@@ -1,0 +1,15 @@
+{
+  "name": "lev-laliga",
+  "private": true,
+  "type": "module",
+  "description": "La Liga Lev: campeonato interno de la Unidad Educativa Lev Vygotsky (laliga.lev.edu.ec)",
+  "scripts": {
+    "build": "node build.mjs",
+    "local": "DEV_EMAIL=admin@lev.edu.ec ADMINS=admin@lev.edu.ec node pruebas/servidor-local.mjs",
+    "test": "node --test pruebas/*.test.mjs"
+  },
+  "dependencies": {
+    "@fontsource-variable/inter": "^5.2.5",
+    "@fontsource/barlow-condensed": "^5.2.5"
+  }
+}

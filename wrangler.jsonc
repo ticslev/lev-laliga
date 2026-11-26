@@ -1,0 +1,44 @@
+{
+  // La Liga Lev — campeonato interno de la Unidad Educativa Lev Vygotsky
+  // https://laliga.lev.edu.ec
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "lev-laliga",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Instala las fuentes y las copia a public/_app/fonts.
+  "build": {
+    "command": "npm install --no-audit --no-fund && node build.mjs"
+  },
+
+  // Las páginas las arma el Worker; public/ solo tiene estilos, scripts, fuentes e iconos.
+  "assets": {
+    "directory": "public",
+    "binding": "ASSETS",
+    "run_worker_first": true,
+    "not_found_handling": "none"
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "lev-laliga",
+      // Pegar aquí el Database ID de D1 → lev-laliga (Cloudflare → Storage & Databases → D1).
+      "database_id": "PEGAR-AQUI-EL-DATABASE-ID"
+    }
+  ],
+
+  // Una sala por partido para el marcador en vivo (WebSocket). Funciona en el plan gratuito.
+  "durable_objects": {
+    "bindings": [{ "name": "PARTIDOS", "class_name": "PartidoVivo" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["PartidoVivo"] }],
+
+  // Las claves (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, SESSION_SECRET, ADMINS)
+  // se guardan en Cloudflare → Worker lev-laliga → Settings → Variables and Secrets.
+  // keep_vars evita que un despliegue las borre.
+  "keep_vars": true,
+
+  "observability": { "enabled": true }
+}
