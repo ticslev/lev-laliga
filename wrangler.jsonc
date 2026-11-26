@@ -25,7 +25,7 @@
       "binding": "DB",
       "database_name": "lev-laliga",
       // Pegar aquí el Database ID de D1 → lev-laliga (Cloudflare → Storage & Databases → D1).
-      "database_id": "PEGAR-AQUI-EL-DATABASE-ID"
+      "database_id": "2a0f2439-f992-448a-a612-411ef2d2a630"
     }
   ],
 
