@@ -60,11 +60,11 @@ function tablaPosiciones(filas, torneo, { resumida = false } = {}) {
   const conGoles = torneo.desempate === 'diferencia' || filas.some((f) => f.gf || f.gc);
   const forma = (f) => f.forma.map((x) => `<span class="forma forma-${x}" title="${x === 'G' ? 'Ganó' : x === 'E' ? 'Empató' : 'Perdió'}">${x}</span>`).join('');
   const una = (lista, grupo) => `${grupo ? `<h3 class="grupo-titulo">Grupo ${e(grupo)}</h3>` : ''}<div class="tabla-caja"><table class="tabla">
-<thead><tr><th scope="col">#</th><th scope="col" class="izq">Equipo</th><th scope="col"><abbr title="Partidos jugados">PJ</abbr></th><th scope="col"><abbr title="Ganados">G</abbr></th>${resumida ? '' : `${d.empates ? '<th scope="col"><abbr title="Empatados">E</abbr></th>' : ''}<th scope="col"><abbr title="Perdidos">P</abbr></th>`}${!resumida && conGoles ? `<th scope="col"><abbr title="A favor">${d.unidad === 'goles' ? 'GF' : 'PF'}</abbr></th><th scope="col"><abbr title="En contra">${d.unidad === 'goles' ? 'GC' : 'PC'}</abbr></th><th scope="col"><abbr title="Diferencia">DIF</abbr></th>` : ''}${resumida ? '' : '<th scope="col">Últimos 5</th>'}<th scope="col"><abbr title="Puntos">PTS</abbr></th></tr></thead>
+<thead><tr><th scope="col">#</th><th scope="col" class="izq">Equipo</th><th scope="col"><abbr title="Partidos jugados">PJ</abbr></th><th scope="col"><abbr title="Ganados">G</abbr></th>${resumida ? '' : `${d.empates ? '<th scope="col" class="opc"><abbr title="Empatados">E</abbr></th>' : ''}<th scope="col" class="opc"><abbr title="Perdidos">P</abbr></th>`}${!resumida && conGoles ? `<th scope="col" class="opc"><abbr title="A favor">${d.unidad === 'goles' ? 'GF' : 'PF'}</abbr></th><th scope="col" class="opc"><abbr title="En contra">${d.unidad === 'goles' ? 'GC' : 'PC'}</abbr></th><th scope="col" class="opc"><abbr title="Diferencia">DIF</abbr></th>` : ''}${resumida ? '' : '<th scope="col" class="opc2">Últimos 5</th>'}<th scope="col"><abbr title="Puntos">PTS</abbr></th></tr></thead>
 <tbody>${(resumida ? lista.slice(0, 5) : lista).map((f) => `<tr${f.pos <= torneo.clasifican ? ' class="clasifica"' : ''}>
 <td class="pos">${f.pos}</td>
 <td class="izq"><a class="equipo-celda" href="/equipos/${f.id}/">${escudo(f.nombre, f.sigla, f.color, 'xs')}${e(f.nombre)}</a>${f.desempate ? ' <abbr class="marca-desempate" title="Ganó el partido de desempate">D</abbr>' : ''}</td>
-<td>${f.pj}</td><td>${f.g}</td>${resumida ? '' : `${d.empates ? `<td>${f.e}</td>` : ''}<td>${f.p}</td>`}${!resumida && conGoles ? `<td>${f.gf}</td><td>${f.gc}</td><td>${f.dg > 0 ? '+' : ''}${f.dg}</td>` : ''}${resumida ? '' : `<td><span class="formas">${forma(f)}</span></td>`}
+<td>${f.pj}</td><td>${f.g}</td>${resumida ? '' : `${d.empates ? `<td class="opc">${f.e}</td>` : ''}<td class="opc">${f.p}</td>`}${!resumida && conGoles ? `<td class="opc">${f.gf}</td><td class="opc">${f.gc}</td><td class="opc">${f.dg > 0 ? '+' : ''}${f.dg}</td>` : ''}${resumida ? '' : `<td class="opc2"><span class="formas">${forma(f)}</span></td>`}
 <td class="pts">${f.pts}</td></tr>`).join('')}</tbody></table></div>`;
   return porGrupo(filas).map(({ grupo, filas: lista }) => una(lista, grupo)).join('');
 }
@@ -91,15 +91,16 @@ function competencias(torneos) {
 
 // ---------- Portada ----------
 
-export function vistaPortada({ enJuego, proximos, resultados, torneos, destacado, tabla, anotadoresTop }) {
+export function vistaPortada({ enJuego, proximos, resultados, torneos, destacado, tabla, anotadoresTop, dia }) {
   const ticker = [...enJuego, ...resultados.slice(0, 4), ...proximos.slice(0, 4)].map(textoTicker);
   const principal = enJuego[0] || proximos[0] || resultados[0];
   const disciplinas = [...new Set(torneos.map((t) => competenciaDe(t)))];
   const cuerpo = `
 ${ticker.length ? `<div class="cinta" aria-label="Resultados y próximos partidos"><div class="cinta-pista">${[...ticker, ...ticker].map((t, i) => `<span${i >= ticker.length ? ' aria-hidden="true"' : ''}>${e(t)}</span>`).join('')}</div></div>` : ''}
+<section class="contenedor seccion-mi-curso" id="mi-curso" data-tiene-cursos="${torneos.length ? 1 : 0}" hidden></section>
 <section class="heroe">
 <div class="contenedor heroe-grid">
-<div class="entra">
+<div class="entra heroe-textos">
 <p class="sobretitulo">Campeonato interno · ${e(String(new Date().getFullYear()))}</p>
 <h1 class="heroe-titulo">JUGAMOS<br>COMO <span>EQUIPO</span></h1>
 <p class="heroe-texto">Fixture, posiciones, goleadores y cada partido minuto a minuto, alimentado por el árbitro desde la cancha.</p>
@@ -113,10 +114,18 @@ ${marcadorGrande(principal)}` : `<div class="tv-vacio"><b>Muy pronto</b><p>Cuand
 </div>
 </section>
 
-<section class="contenedor seccion">
+${dia ? `<section class="contenedor seccion" id="dia">
+<div class="tira-dias" role="list" aria-label="Días de juego">${dia.tira.map((d) => {
+    const etq = d.fecha ? fechaCorta(d.fecha, { hora: false }) : 'Sin fecha';
+    const [sem, num] = d.fecha ? [etq.split(' ')[0], d.fecha.slice(8, 10).replace(/^0/, '')] : ['Día', String(d.numero)];
+    return `<a role="listitem" class="tira-dia" href="/?dia=${d.numero}#dia"${d.numero === dia.numero ? ' aria-current="date"' : ''}><span>${e(['Hoy', 'Mañana', 'Ayer'].includes(etq) ? etq : sem)}</span><b>${e(num)}</b><small>Día ${d.numero}</small></a>`;
+  }).join('')}<a class="tira-dia tira-mas" href="/calendario/#dia-${dia.numero}"><span>Ver</span><b>+</b><small>todos</small></a></div>
+<div class="seccion-cabeza"><h2 class="titulo-seccion">${dia.hoy ? 'HOY' : 'DÍA ' + dia.numero} · ${dia.partidos.length} PARTIDOS</h2><span class="nota-dia">${dia.fecha ? e(fechaCorta(dia.fecha, { hora: false })) : 'Fecha por definir'}</span></div>
+<div class="panel-lista">${dia.partidos.map((p) => filaPartido(p, { mostrarTorneo: true })).join('')}</div>
+</section>` : `<section class="contenedor seccion">
 <div class="seccion-cabeza"><h2 class="titulo-seccion">PRÓXIMOS PARTIDOS</h2><a href="/fixture/">Todo el fixture →</a></div>
 ${proximos.length ? `<div class="grilla-tarjetas">${proximos.slice(0, 4).map(tarjetaPartido).join('')}</div>` : vacio('No hay partidos programados por ahora.')}
-</section>
+</section>`}
 
 ${destacado ? `<section class="contenedor seccion grilla-2">
 <div class="panel-claro">
@@ -246,7 +255,7 @@ ${equipo.descripcion ? `<div class="panel-oscuro"><h3 class="mini-titulo">SOBRE 
 
 // ---------- Partido (en vivo o terminado) ----------
 
-export function vistaPartido({ estado, p, jugadoresLocal, jugadoresVisita, enVivo }) {
+export function vistaPartido({ estado, p, jugadoresLocal, jugadoresVisita, enVivo, despues }) {
   const d = disciplina(p);
   const alineacion = (nombre, lista, color) => `<div class="alin-col"><h3>${e(nombre)}</h3>${lista.length ? `<ul>${lista.filter((j) => j.activo).map((j) => `<li><span class="alin-dorsal c-${e(color)}">${j.dorsal ?? '–'}</span>${e(j.nombre)}${j.capitan ? ' <abbr title="Capitán">(C)</abbr>' : ''}</li>`).join('')}</ul>` : '<p class="nota">Sin nómina.</p>'}</div>`;
   const cuerpo = `<div class="partido" data-partido="${p.id}">
@@ -259,11 +268,15 @@ export function vistaPartido({ estado, p, jugadoresLocal, jugadoresVisita, enViv
 <a class="mg-equipo" href="${p.visita_id ? `/equipos/${p.visita_id}/` : '#'}">${escudo(p.visita_nombre, p.visita_sigla, p.visita_color, 'xl')}<b>${e(nombreVisita(p))}</b></a>
 </div>
 <p class="conexion" id="conexion" hidden></p>
+<div class="avisos-goles" data-avisos data-local="${p.local_id || ''}" data-visita="${p.visita_id || ''}" hidden>
+<button type="button" class="boton boton-borde boton-aviso" id="boton-avisos"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10 21h4"/></svg><span>Avisarme los goles de mi curso</span></button>
+</div>
 </div>
 </section>
 <div class="contenedor seccion partido-cuerpo">
 <section class="panel-oscuro"><div class="seccion-cabeza"><h2 class="titulo-panel">MINUTO A MINUTO</h2><button class="boton boton-borde boton-chico" type="button" id="compartir">Compartir</button></div>
 <ol class="relato" id="relato"></ol>
+${despues ? `<a class="despues" href="/partido/${despues.id}/">Después en ${e(p.lugar)}: <b>${e(nombreLocal(despues))} vs ${e(nombreVisita(despues))}</b> · ${e(despues.hora || despues.fecha.slice(11, 16))}</a>` : ''}
 <noscript><p class="nota">Activa JavaScript para ver el relato en vivo.</p></noscript>
 </section>
 ${jugadoresLocal.length || jugadoresVisita.length ? `<section class="panel-oscuro"><h2 class="titulo-panel">CONVOCADOS</h2><div class="alineaciones">${alineacion(nombreLocal(p), jugadoresLocal, p.local_color)}${alineacion(nombreVisita(p), jugadoresVisita, p.visita_color)}</div></section>` : ''}

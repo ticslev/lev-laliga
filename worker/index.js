@@ -6,7 +6,8 @@ import { usuarioActual, iniciar, volverDeGoogle, salir } from './auth.js';
 import { rutaPublica, apiPublica, noEncontrado } from './sitio.js';
 import { rutaPanel, paginaArbitro } from './panel.js';
 import { accionArbitro } from './arbitro.js';
-import { error, redirigir, html } from './util.js';
+import { apiAvisos } from './avisos.js';
+import { error, redirigir, html, json } from './util.js';
 
 export { PartidoVivo } from './vivo.js';
 
@@ -17,6 +18,8 @@ const CSP = [
   "img-src 'self' data: https://lh3.googleusercontent.com",
   "font-src 'self'",
   "connect-src 'self'",
+  "manifest-src 'self'",
+  "worker-src 'self'",
   "form-action 'self' https://accounts.google.com",
   "frame-ancestors 'none'",
   "base-uri 'none'",
@@ -50,6 +53,15 @@ async function manejar(request, env, ctx) {
   const url = new URL(request.url);
   const ruta = url.pathname;
 
+  // Service worker de los avisos: debe servirse desde la raíz para cubrir todo el sitio.
+  if (ruta === '/sw.js') {
+    const r = await env.ASSETS.fetch(new Request(new URL('/_app/sw.js', url), request));
+    const h = new Response(r.body, r);
+    h.headers.set('Content-Type', 'text/javascript; charset=utf-8');
+    h.headers.set('Cache-Control', 'no-cache');
+    return h;
+  }
+
   // Archivos del sitio (estilos, scripts, fuentes, iconos).
   if (ruta.startsWith('/_app/') || ruta === '/robots.txt' || ruta === '/favicon.ico') {
     return env.ASSETS.fetch(request);
@@ -77,6 +89,10 @@ async function manejar(request, env, ctx) {
     return accionArbitro(request, env, ctx, yo, Number(m[1]));
   }
 
+  if (ruta.startsWith('/api/avisos')) {
+    return (await apiAvisos(request, env, url)) || error('No encontrado.', 404);
+  }
+
   if (ruta.startsWith('/api/')) {
     return (await apiPublica(request, env, url, ctx)) || error('No encontrado.', 404);
   }
@@ -87,6 +103,12 @@ async function manejar(request, env, ctx) {
     const yo = await usuarioActual(request, env);
     if (!yo) return redirigir('/entrar/?siguiente=' + encodeURIComponent(ruta));
     const r = m ? await paginaArbitro(env, yo, Number(m[1])) : await rutaPanel(request, env, url, yo);
+    // Envíos rápidos desde el celular (sin recargar): la redirección con el aviso se convierte en JSON.
+    if (r && request.headers.get('X-Rapido') === '1' && r.status === 303) {
+      const destino = new URL(r.headers.get('Location'), url);
+      const ok = destino.searchParams.get('ok');
+      return json({ ok: Boolean(ok), mensaje: ok || destino.searchParams.get('error') || '' }, ok ? 200 : 400);
+    }
     return r || noEncontrado();
   }
 

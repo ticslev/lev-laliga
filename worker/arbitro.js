@@ -5,6 +5,7 @@ import { json, error, entero, textoCorto, ahoraISO } from './util.js';
 import { estadoPartido, recalcularMarcador, segundosReloj, minutoActual, convocadosDe, alumnosDelEquipo, partido as leerPartido, disciplina, ganadorFinal, completarCruces } from './datos.js';
 import { nombreOrdenado } from './util.js';
 import { avisar } from './vivo.js';
+import { avisarGol } from './avisos.js';
 
 export function puedeArbitrar(yo, p) {
   return yo && (yo.editor || (yo.rol === 'arbitro' && p.arbitro_email && p.arbitro_email.toLowerCase() === yo.email));
@@ -129,7 +130,31 @@ export async function accionArbitro(request, env, ctx, yo, partidoId) {
         equipo, jugador, jugador2, valor, minuto, clienteId,
         detalle: autogol ? 'autogol' : textoCorto(datos.detalle, 140),
       });
-      if (tipo === 'gol') await recalcularMarcador(db, partidoId);
+      if (tipo === 'gol') {
+        await recalcularMarcador(db, partidoId);
+        await avisoDeGol(env, ctx, partidoId, equipo, jugador, valor);
+      }
+      break;
+    }
+    case 'asignar': {
+      // Gol o tarjeta registrado primero, jugador elegido después.
+      const ev = typeof datos.clienteId === 'string'
+        ? await uno(db, 'SELECT * FROM eventos WHERE cliente_id = ? AND partido_id = ? AND anulado = 0', datos.clienteId, partidoId)
+        : null;
+      if (!ev) return error('Ese registro ya no existe.', 404);
+      const equipoJugador = ev.detalle === 'autogol' ? (ev.equipo_id === p.local_id ? p.visita_id : p.local_id) : ev.equipo_id;
+      let jugadorId = null;
+      if (datos.alumno) {
+        const a = await uno(db, `SELECT a.id, a.nombre FROM alumnos a JOIN equipos q ON q.curso_id = a.curso_id WHERE a.id = ? AND q.id = ?`, Number(datos.alumno), equipoJugador);
+        if (!a) return error('Ese alumno no es del curso.');
+        const ya = await uno(db, 'SELECT id FROM jugadores WHERE equipo_id = ? AND alumno_id = ?', equipoJugador, a.id);
+        jugadorId = ya ? ya.id : (await ejecutar(db, 'INSERT INTO jugadores (equipo_id, nombre, alumno_id, convocado, activo) VALUES (?, ?, ?, 0, 1)', equipoJugador, a.nombre, a.id)).meta.last_row_id;
+      } else if (datos.jugador) {
+        const j = await uno(db, 'SELECT id FROM jugadores WHERE id = ? AND equipo_id = ?', Number(datos.jugador), equipoJugador);
+        if (!j) return error('Ese jugador no es de este equipo.');
+        jugadorId = j.id;
+      }
+      await ejecutar(db, 'UPDATE eventos SET jugador_id = ? WHERE id = ?', jugadorId, ev.id);
       break;
     }
     case 'anular': {
@@ -166,4 +191,23 @@ export async function datosArbitro(db, partidoId) {
   };
   const [estado, local, visita] = await Promise.all([estadoPartido(db, partidoId), nomina(p.local_id), nomina(p.visita_id)]);
   return { p, estado, nominas: { local, visita }, disciplina: disciplina(p) };
+}
+
+// Aviso a los celulares que siguen al curso que anotó.
+async function avisoDeGol(env, ctx, partidoId, equipoId, jugadorId, valor) {
+  try {
+    const p = await uno(env.DB, `SELECT p.goles_local, p.goles_visita, p.local_id, t.disciplina, t.competencia,
+        l.nombre AS local, v.nombre AS visita FROM partidos p JOIN torneos t ON t.id = p.torneo_id
+        JOIN equipos l ON l.id = p.local_id JOIN equipos v ON v.id = p.visita_id WHERE p.id = ?`, partidoId);
+    const j = jugadorId ? await uno(env.DB, 'SELECT nombre FROM jugadores WHERE id = ?', jugadorId) : null;
+    const anota = equipoId === p.local_id ? p.local : p.visita;
+    const que = p.disciplina === 'basquet' ? `+${valor}` : p.disciplina === 'voley' ? 'Set' : '¡Gol!';
+    await avisarGol(env, ctx, {
+      equipoId, partidoId,
+      titulo: `${que} ${anota}${j ? ' · ' + j.nombre : ''}`,
+      cuerpo: `${p.local} ${p.goles_local} – ${p.goles_visita} ${p.visita}${p.competencia ? ' · ' + p.competencia : ''}`,
+    });
+  } catch (e) {
+    console.error('Aviso de gol', e);
+  }
 }

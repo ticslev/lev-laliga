@@ -27,8 +27,10 @@ export function pagina({ titulo, actual = '', cuerpo, scripts = [], descripcion,
 <meta name="description" content="${e(descripcion || 'Fixture, posiciones, goleadores y partidos en vivo del campeonato interno de la Unidad Educativa Lev Vygotsky.')}">
 <meta name="theme-color" content="#120b24">
 <link rel="icon" href="/_app/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/_app/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/_app/icono-180.png">
 <link rel="stylesheet" href="/_app/estilos.css">
-${scripts.map((s) => `<script src="${s}" defer></script>`).join('\n')}
+${[...scripts, '/_app/comun.js'].map((s) => `<script src="${s}" defer></script>`).join('\n')}
 </head>
 <body class="${e(clase)}">
 <a class="saltar" href="#contenido">Saltar al contenido</a>
@@ -36,6 +38,7 @@ ${sinCabecera ? '' : `<header class="cabecera">
 <div class="contenedor cabecera-fila">
 <a class="logo" href="/">${TROFEO}<span>LA LIGA LEV<small>Campeonato interno</small></span></a>
 <nav class="nav" aria-label="Principal">${nav}<a href="/vivo/" class="nav-vivo${actual === 'vivo' ? ' activo' : ''}"${actual === 'vivo' ? ' aria-current="page"' : ''}>${enVivo ? '<span class="punto-vivo" aria-hidden="true"></span>' : ''}En vivo</a></nav>
+<button type="button" class="mi-curso-chip" data-mi-curso hidden><span class="mc-sigla" aria-hidden="true">+</span><span class="mc-texto">Mi curso</span></button>
 <a class="boton-encargados" href="/panel/">Encargados</a>
 </div>
 </header>`}
@@ -44,8 +47,23 @@ ${cuerpo}
 </main>
 ${sinCabecera ? '' : `<footer class="pie contenedor">
 <span>Unidad Educativa Lev Vygotsky · Campeonato interno</span>
-<span class="pie-enlaces"><a href="/tv/">Modo TV</a><a href="https://lev.edu.ec">lev.edu.ec</a></span>
-</footer>`}
+<span class="pie-enlaces"><a href="/tv/">Modo TV</a><a href="/panel/">Encargados</a><a href="https://lev.edu.ec">lev.edu.ec</a></span>
+</footer>
+<nav class="pestanas" aria-label="Secciones">
+<a href="/"${actual === 'inicio' ? ' aria-current="page"' : ''}><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Hoy${enVivo ? '<span class="pestana-vivo" aria-label="hay partidos en vivo"></span>' : ''}</a>
+<a href="/calendario/"${actual === 'calendario' || actual === 'fixture' ? ' aria-current="page"' : ''}><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Calendario</a>
+<a href="/posiciones/"${actual === 'posiciones' ? ' aria-current="page"' : ''}><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Tablas</a>
+<a href="/equipos/"${actual === 'equipos' ? ' aria-current="page"' : ''}><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M3 20c0-3.5 2.7-6 6-6s6 2.5 6 6M16 4.5a3.5 3.5 0 0 1 0 7M18 14c2 .6 3 2.8 3 6"/></svg>Equipos</a>
+</nav>
+<dialog class="hoja-cursos" id="hoja-cursos" aria-labelledby="hc-titulo">
+<form method="dialog" class="hc-caja">
+<h2 id="hc-titulo">¿Cuál es tu curso?</h2>
+<p>Se guarda solo en este celular. La portada te mostrará sus partidos y su puesto en cada tabla.</p>
+<input type="search" id="hc-buscar" placeholder="Buscar curso o paralelo" aria-label="Buscar curso">
+<div class="hc-lista" id="hc-lista"><p class="nota">Cargando cursos…</p></div>
+<div class="hc-pie"><button value="quitar" class="boton boton-borde boton-chico" id="hc-quitar" type="button">Quitar mi curso</button><button value="cerrar" class="boton boton-oro boton-chico">Listo</button></div>
+</form>
+</dialog>`}
 </body>
 </html>`;
 }

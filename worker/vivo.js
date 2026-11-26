@@ -2,9 +2,42 @@
 // Los celulares del público se conectan por WebSocket y reciben cada cambio que registra el árbitro.
 // Usa la API de hibernación: si nadie habla, el objeto se duerme y no consume.
 
+import { borrarVencidas } from './avisos.js';
+
+const POR_TANDA = 40; // conexiones por invocación (el plan gratuito permite 50)
+
 export class PartidoVivo {
-  constructor(state) {
+  constructor(state, env) {
     this.state = state;
+    this.env = env;
+  }
+
+  // Cola de avisos de gol: se envían en tandas, cada una en su propia alarma.
+  async encolarAvisos(datos) {
+    const cola = (await this.state.storage.get('cola')) || [];
+    for (const endpoint of datos.endpoints || []) {
+      const firma = datos.firmas[new URL(endpoint).origin];
+      if (firma) cola.push({ endpoint, firma });
+    }
+    await this.state.storage.put('cola', cola.slice(-5000));
+    await this.state.storage.setAlarm(Date.now() + 50);
+  }
+
+  async alarm() {
+    const cola = (await this.state.storage.get('cola')) || [];
+    const tanda = cola.splice(0, POR_TANDA);
+    const vencidas = [];
+    await Promise.all(tanda.map(async ({ endpoint, firma }) => {
+      try {
+        const r = await fetch(endpoint, { method: 'POST', headers: { TTL: '600', Urgency: 'high', Authorization: firma, 'Content-Length': '0' } });
+        if (r.status === 404 || r.status === 410) vencidas.push(endpoint);
+      } catch (e) {
+        console.error('Aviso', e);
+      }
+    }));
+    await this.state.storage.put('cola', cola);
+    if (cola.length) await this.state.storage.setAlarm(Date.now() + 200);
+    if (vencidas.length && this.env?.DB) await borrarVencidas(this.env.DB, vencidas);
   }
 
   async fetch(request) {
@@ -30,6 +63,11 @@ export class PartidoVivo {
           // conexión cerrada: se ignora
         }
       }
+      return new Response('ok');
+    }
+
+    if (request.method === 'POST' && url.pathname.endsWith('/push')) {
+      await this.encolarAvisos(await request.json());
       return new Response('ok');
     }
 

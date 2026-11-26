@@ -43,11 +43,19 @@ ${scripts.map((s) => `<script src="${s}" defer></script>`).join('')}
 </aside>
 <main class="panel-contenido" id="contenido">
 <h1 class="panel-titulo">${e(titulo)}</h1>
+<span class="panel-guardado" id="panel-guardado" hidden></span>
 ${aviso ? `<p class="aviso aviso-ok" role="status">${e(aviso)}</p>` : ''}
 ${errorTexto ? `<p class="aviso aviso-error" role="alert">${e(errorTexto)}</p>` : ''}
 ${cuerpo}
 </main>
 </div>
+${yo.editor ? `<nav class="panel-pestanas" aria-label="Panel">
+${[['inicio', '/panel/', 'Hoy', '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'],
+    ['dias', '/panel/resultados/', 'Resultados', '<path d="M9 11l3 3 8-8M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/>'],
+    ['arbitrar', '/panel/arbitrar/', 'Arbitrar', '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M9 2h6"/>'],
+    ['mas', '/panel/mas/', 'Más', '<circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>']]
+    .map(([id, href, t, ic]) => `<a href="${href}"${id === actual || (id === 'mas' && !['inicio', 'dias', 'arbitrar'].includes(actual)) ? ' aria-current="page"' : ''}><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">${ic}</svg>${t}</a>`).join('')}
+</nav>` : ''}
 </body>
 </html>`;
 }
@@ -69,13 +77,21 @@ ${chipEstado(p)}
 
 // ---------- Inicio ----------
 
-export function vistaInicio({ yo, enJuego, hoy, mios, sinArbitro, hayTorneos, pendientes }) {
+export function vistaInicio({ yo, enJuego, hoy, mios, sinArbitro, hayTorneos, pendientes, dia, canchas = [], sinResultado = [], aviso, errorTexto }) {
   if (!yo.editor) {
     return panelPagina({ titulo: 'Mis partidos', actual: 'inicio', yo, cuerpo: `
 <p class="nota-panel">Estos son los partidos que te asignaron. Toca “Arbitrar” desde tu celular en la cancha.</p>
 <div class="caja">${mios.length ? mios.map((p) => filaPanelPartido(p, yo)).join('') : '<p class="vacio-panel">No tienes partidos asignados por ahora.</p>'}</div>` });
   }
+  const pct = dia && dia.total ? dia.hechos / dia.total : 0;
+  const circ = 2 * Math.PI * 32;
   const cuerpo = `
+${dia ? `<section class="dia-resumen">
+<svg width="84" height="84" viewBox="0 0 76 76" role="img" aria-label="${dia.hechos} de ${dia.total} resultados cargados"><circle cx="38" cy="38" r="32" fill="none" stroke="#2e2350" stroke-width="9"/><circle cx="38" cy="38" r="32" fill="none" stroke="#f5b82e" stroke-width="9" stroke-linecap="round" stroke-dasharray="${(pct * circ).toFixed(1)} ${circ.toFixed(1)}" transform="rotate(-90 38 38)"/><text x="38" y="44" text-anchor="middle" fill="#fff" font-family="Barlow Condensed, sans-serif" font-weight="800" font-size="20">${dia.hechos}/${dia.total}</text></svg>
+<div><p class="dr-fecha">${dia.fecha ? e(fechaCorta(dia.fecha, { hora: false })).toUpperCase() : 'SIN FECHA'}</p><h2>DÍA DE JUEGO ${dia.numero}</h2><p class="dr-sub">${dia.vivos ? `${dia.vivos} en vivo · ` : ''}${dia.total - dia.hechos} sin resultado</p></div>
+</section>
+<a class="boton-grande" href="/panel/dias/${dia.numero}/"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M9 11l3 3 8-8M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></svg><span><b>Cargar resultados</b><small>${sinResultado.length ? `${sinResultado.length} ${sinResultado.length === 1 ? 'partido ya jugado espera' : 'partidos ya jugados esperan'} quién ganó` : 'Toca al equipo que ganó, en un toque'}</small></span><span class="flecha-grande">›</span></a>
+${canchas.length > 1 ? `<div class="por-cancha">${canchas.map((c) => `<div><b>${e(c.lugar.replace(/^Cancha (de )?/i, ''))}</b><span>${c.hechos || 0}/${c.total}</span></div>`).join('')}</div>` : ''}` : ''}
 ${!hayTorneos ? `<div class="caja caja-destacada"><h2>Empecemos</h2><p>Crea el primer torneo (por ejemplo “Fútbol · Básica Superior”), agrega los equipos y genera el fixture automático.</p>
 <div class="fila-botones"><a class="boton boton-morado" href="/panel/torneos/">Crear un torneo</a>
 ${yo.admin ? `<form method="post" action="/panel/ejemplo"><button class="boton boton-claro">Cargar datos de ejemplo</button></form>` : ''}</div></div>` : ''}
@@ -88,8 +104,13 @@ ${pendientes ? `<p class="aviso">Hay ${pendientes} ${pendientes === 1 ? 'persona
 ${enJuego.length ? `<h2 class="subtitulo-panel">En vivo</h2><div class="caja">${enJuego.map((p) => filaPanelPartido(p, yo)).join('')}</div>` : ''}
 <h2 class="subtitulo-panel">Hoy</h2>
 <div class="caja">${hoy.length ? hoy.map((p) => filaPanelPartido(p, yo)).join('') : '<p class="vacio-panel">No hay partidos programados para hoy.</p>'}</div>
-${mios.length ? `<h2 class="subtitulo-panel">Asignados a ti</h2><div class="caja">${mios.map((p) => filaPanelPartido(p, yo)).join('')}</div>` : ''}`;
-  return panelPagina({ titulo: 'Inicio', actual: 'inicio', yo, cuerpo });
+${mios.length ? `<h2 class="subtitulo-panel">Asignados a ti</h2><div class="caja">${mios.map((p) => filaPanelPartido(p, yo)).join('')}</div>` : ''}
+${dia && dia.fecha && dia.hechos < dia.total ? `<form method="post" action="/panel/dias/" class="caja formulario" data-confirmar="¿Posponer el día ${dia.numero}? Este día y los siguientes se corren al próximo día de clases.">
+<h2 class="subtitulo-caja">¿Llueve o se suspende?</h2>
+<p class="nota-panel">Los partidos del día ${dia.numero} pasan al siguiente día de clases y todo el calendario se corre.</p>
+<input type="hidden" name="accion" value="posponer"><input type="hidden" name="dia" value="${dia.numero}">
+<button class="boton boton-claro">Posponer el día ${dia.numero}</button></form>` : ''}`;
+  return panelPagina({ titulo: 'Hoy', actual: 'inicio', yo, cuerpo, aviso, errorTexto });
 }
 
 // ---------- Torneos ----------
@@ -374,35 +395,41 @@ export function vistaHistorial({ yo, filas }) {
 
 export function vistaArbitro({ yo, datos }) {
   const { p, disciplina: d } = datos;
+  const varios = d.botones.length > 1;
   const cuerpo = `<div class="arbitro" id="arbitro">
 <header class="arb-cabeza">
-<div class="arb-meta"><a href="/panel/" aria-label="Volver al panel">‹ Panel</a><span>${e(p.torneo_nombre)}${p.lugar ? ' · ' + e(p.lugar) : ''}</span></div>
+<div class="arb-meta"><a href="/panel/arbitrar/" aria-label="Volver">‹ Partidos</a><span>${e(p.nivel || p.torneo_nombre)}${p.fase !== 'grupos' ? ' · ' + e(FASES[p.fase]) : ''}${p.lugar ? ' · ' + e(p.lugar) : ''}</span>
+<button type="button" class="arb-mas" id="arb-mas" aria-label="Más acciones"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></button></div>
 <div class="arb-marcador">
 <b class="arb-equipo">${e(p.local_nombre)}</b>
 <span class="arb-goles" id="arb-goles">${p.goles_local} – ${p.goles_visita}</span>
 <b class="arb-equipo">${e(p.visita_nombre)}</b>
 </div>
-<div class="arb-reloj"><span id="arb-reloj">00:00</span><span id="arb-periodo" class="arb-periodo"></span></div>
-<div class="arb-control" id="arb-control"></div>
+<button type="button" class="arb-reloj-boton" id="arb-reloj-boton"><b id="arb-reloj">00:00</b><span id="arb-reloj-texto"></span></button>
 <p class="arb-conexion" id="arb-conexion" role="status"></p>
 </header>
 <div class="arb-equipos">
 ${['local', 'visita'].map((lado) => `<section class="arb-lado arb-${lado}">
 <h2 class="arb-lado-nombre c-${e(lado === 'local' ? p.local_color : p.visita_color)}">${e(lado === 'local' ? p.local_nombre : p.visita_nombre)}</h2>
-<div class="arb-botones-gol">${d.botones.map((b) => `<button type="button" class="arb-gol" data-tipo="gol" data-lado="${lado}" data-valor="${b.valor}"${b.sinJugador ? ' data-sin-jugador="1"' : ''}>${e(b.etiqueta)}</button>`).join('')}</div>
+<div class="arb-botones-gol${varios ? ' varios' : ''}">${d.botones.map((b) => `<button type="button" class="arb-gol" data-tipo="gol" data-lado="${lado}" data-valor="${b.valor}"${b.sinJugador ? ' data-sin-jugador="1"' : ''}>${b.etiqueta === 'GOL' ? '+ GOL' : e(b.etiqueta)}${!varios && !b.sinJugador ? '<small>quién, después</small>' : ''}</button>`).join('')}</div>
 ${d.tarjetas ? `<div class="arb-tarjetas"><button type="button" class="arb-amarilla" data-tipo="amarilla" data-lado="${lado}">Amarilla</button><button type="button" class="arb-roja" data-tipo="roja" data-lado="${lado}">Roja</button></div>` : ''}
-${d.botones[0].sinJugador ? '' : `<button type="button" class="arb-cambio" data-tipo="cambio" data-lado="${lado}">Cambio</button>`}
 </section>`).join('')}
 </div>
-<section class="arb-registro">
-<div class="arb-registro-cabeza"><h2>Registro</h2><button type="button" class="boton boton-chico boton-claro" id="arb-deshacer">Deshacer último</button></div>
-<ol id="arb-eventos" class="arb-eventos"></ol>
-</section>
+<div class="arb-pendiente" id="arb-pendiente" hidden>
+<div class="arb-pendiente-cab"><b id="arb-pendiente-texto"></b><button type="button" id="arb-pendiente-cerrar" aria-label="Cerrar">×</button></div>
+<div class="arb-sugeridos" id="arb-sugeridos"></div>
+</div>
+<p class="arb-ultimo" id="arb-ultimo"></p>
+<footer class="arb-pie">
+${d.botones[0].sinJugador ? '<span></span>' : '<button type="button" id="arb-cambio">Cambio</button>'}
+<button type="button" id="arb-periodo-boton"></button>
+<button type="button" id="arb-deshacer" class="arb-deshacer">Deshacer</button>
+</footer>
 <dialog class="hoja" id="hoja">
 <form method="dialog" class="hoja-caja">
 <h2 id="hoja-titulo">¿Quién?</h2>
 <div class="hoja-lista" id="hoja-lista"></div>
-<div class="hoja-pie"><button value="cancelar" class="boton boton-claro">Cancelar</button></div>
+<div class="hoja-pie"><button value="cancelar" class="boton boton-claro">Cerrar</button></div>
 </form>
 </dialog>
 <script type="application/json" id="datos-arbitro">${JSON.stringify({ ...datos.estado, nominas: datos.nominas, disciplina: { tarjetas: d.tarjetas, periodoNombre: d.periodoNombre, marcador: d.marcador }, editor: yo.editor }).replace(/</g, '\\u003c')}</script>
@@ -463,18 +490,52 @@ ${d.fecha && d.pendientes ? `<form method="post" data-confirmar="¿Posponer el d
 }
 
 export function vistaDia({ yo, dia, partidos, empatesPor, anterior, siguiente, aviso, errorTexto }) {
+  const hechos = partidos.filter((p) => p.estado === 'finalizado').length;
+  const canchas = [...new Set(partidos.map((p) => p.lugar).filter(Boolean))];
+  const tarjeta = (p) => {
+    const empate = empatesPor(p) && (p.fase === 'grupos' || p.fase === 'amistoso');
+    const listo = p.local_id && p.visita_id;
+    const l = p.local_nombre || p.etiqueta_local || '?';
+    const v = p.visita_nombre || p.etiqueta_visita || '?';
+    const resultado = p.estado !== 'finalizado' ? '' : p.ganador === 'empate' ? `${l} y ${v} empataron` : `Ganó ${p.ganador === 'visita' ? v : l}${p.marcador ? ` · ${p.goles_local}–${p.goles_visita}` : ''}`;
+    return `<article class="rc" data-id="${p.id}" data-estado="${e(p.estado)}" data-ganador="${e(p.ganador || '')}" data-cancha="${e(p.lugar || '')}" data-fase="${e(p.fase)}"
+data-local="${e(l)}" data-visita="${e(v)}" data-gl="${p.goles_local}" data-gv="${p.goles_visita}" data-marcador="${p.marcador ? 1 : 0}" data-empate="${empate ? 1 : 0}">
+<div class="rc-cab"><span><b>${e(p.hora || '')}</b> · ${e(p.lugar || 'Sin cancha')}</span><span>${e(p.torneo_nombre.replace(' · ', ' · '))}${p.fase !== 'grupos' ? ' · ' + e(FASES[p.fase]) : ''}</span></div>
+${listo ? `<form method="post" class="rc-botones${empate ? ' con-empate' : ''}">
+<input type="hidden" name="accion" value="ganador"><input type="hidden" name="partido" value="${p.id}">
+<button name="valor" value="local"${p.ganador === 'local' ? ' aria-pressed="true"' : ''}>${e(l)}</button>
+${empate ? `<button name="valor" value="empate" class="rc-empate"${p.ganador === 'empate' ? ' aria-pressed="true"' : ''}>Empate</button>` : ''}
+<button name="valor" value="visita"${p.ganador === 'visita' ? ' aria-pressed="true"' : ''}>${e(v)}</button>
+</form>
+<div class="rc-hecho"><span class="rc-check" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l5 5 9-10"/></svg></span><b class="rc-texto">${e(resultado)}</b><button type="button" class="rc-cambiar">Cambiar</button></div>
+<div class="rc-pie"><button type="button" class="rc-marcador">Marcador o penales</button>${p.estado === 'en_vivo' || p.estado === 'entretiempo' ? '<span class="chip-estado chip-vivo">En vivo</span>' : ''}<a href="/arbitro/${p.id}/">Arbitrar</a></div>`
+    : `<p class="rc-espera">${e(l)} vs ${e(v)} · se completa solo al terminar la fase anterior</p>`}
+</article>`;
+  };
   const cuerpo = `
-<p class="migas"><a href="/panel/dias/">Días de juego</a> › Día ${dia.numero}${dia.fecha ? ' · ' + e(fechaCorta(dia.fecha, { hora: false })) : ' · sin fecha'}
-${anterior ? ` · <a href="/panel/dias/${anterior}/">‹ Día ${anterior}</a>` : ''}${siguiente ? ` · <a href="/panel/dias/${siguiente}/">Día ${siguiente} ›</a>` : ''}</p>
-<p class="nota-panel">Toca el equipo que ganó (o Empate en fútbol, solo en fase de grupos). Para registrar goles, tarjetas y el reloj, usa <b>Arbitrar</b>.</p>
-<div class="caja">
-${partidos.map((p) => `<div class="dia-partido">
-<span class="dp-info"><b>${e(p.hora || '')}</b> ${e(p.lugar || '')}<small>${e(p.torneo_nombre)}${p.fase !== 'grupos' ? ' · ' + e(FASES[p.fase]) : ''}</small></span>
-<span class="dp-equipos">${e(p.local_nombre || p.etiqueta_local || '?')} <span class="pp-marcador">${p.estado === 'programado' ? 'vs' : p.marcador ? `${p.goles_local} – ${p.goles_visita}` : '·'}</span> ${e(p.visita_nombre || p.etiqueta_visita || '?')} ${chipEstado(p)}</span>
-<span class="dp-rapido">${botonesGanador(p, empatesPor(p))}${p.local_id && p.visita_id ? `<a class="boton boton-chico boton-claro" href="/arbitro/${p.id}/">Arbitrar</a>` : ''}</span>
-</div>`).join('') || '<p class="vacio-panel">Este día no tiene partidos.</p>'}
-</div>`;
-  return panelPagina({ titulo: `Día de juego ${dia.numero}`, actual: 'dias', yo, cuerpo, aviso, errorTexto });
+<div class="dia-barra">
+<p class="migas"><a href="/panel/dias/">Días</a> · ${dia.fecha ? e(fechaCorta(dia.fecha, { hora: false })) : 'sin fecha'}
+${anterior ? ` · <a href="/panel/dias/${anterior}/">‹ ${anterior}</a>` : ''}${siguiente ? ` · <a href="/panel/dias/${siguiente}/">${siguiente} ›</a>` : ''}</p>
+<div class="dia-progreso"><svg width="100%" height="8" viewBox="0 0 100 8" preserveAspectRatio="none" aria-hidden="true"><rect width="100" height="8" rx="4" fill="#ece6fb"/><rect id="barra-avance" width="${partidos.length ? Math.round((hechos / partidos.length) * 100) : 0}" height="8" rx="4" fill="#5b2fc9"/></svg><b id="conteo" data-total="${partidos.length}">${hechos}/${partidos.length}</b></div>
+<div class="filtros-dia" role="group" aria-label="Filtrar">
+<button type="button" data-filtro="pendientes" aria-pressed="true">Pendientes</button><button type="button" data-filtro="todos" aria-pressed="false">Todos</button>
+${canchas.map((c) => `<button type="button" data-filtro="cancha" data-valor="${e(c)}" aria-pressed="false">${e(c.replace(/^Cancha (de )?/i, ''))}</button>`).join('')}
+</div>
+</div>
+<p class="nota-panel rc-ayuda">Toca al equipo que ganó. Se guarda al instante y puedes deshacerlo.</p>
+<div class="rc-lista" id="rc-lista">${partidos.map(tarjeta).join('') || '<p class="vacio-panel">Este día no tiene partidos.</p>'}</div>
+<p class="vacio-panel rc-vacio" id="rc-vacio" hidden>¡Listo! Todos los resultados de este día están cargados.</p>
+<div class="toast" id="toast" role="status" hidden><span id="toast-texto"></span><button type="button" id="toast-deshacer">Deshacer</button></div>
+<dialog class="hoja hoja-marcador" id="hoja-marcador" aria-labelledby="hm-titulo">
+<form method="dialog" class="hoja-caja">
+<h2 id="hm-titulo">Marcador</h2>
+<div class="hm-equipo"><b id="hm-local"></b><span class="hm-stepper"><button type="button" data-paso="l" data-delta="-1" aria-label="Restar al local">−</button><output id="hm-gl">0</output><button type="button" data-paso="l" data-delta="1" aria-label="Sumar al local">+</button></span></div>
+<div class="hm-equipo"><b id="hm-visita"></b><span class="hm-stepper"><button type="button" data-paso="v" data-delta="-1" aria-label="Restar a la visita">−</button><output id="hm-gv">0</output><button type="button" data-paso="v" data-delta="1" aria-label="Sumar a la visita">+</button></span></div>
+<div class="hm-penales" id="hm-penales" hidden><b>Empate: ¿quién ganó en penales?</b><div><button type="button" data-penal="local" id="hm-pl"></button><button type="button" data-penal="visita" id="hm-pv"></button></div></div>
+<div class="hoja-pie"><button value="cancelar" class="boton boton-claro">Cancelar</button><button type="button" class="boton boton-morado" id="hm-guardar">Guardar</button></div>
+</form>
+</dialog>`;
+  return panelPagina({ titulo: `Día de juego ${dia.numero}`, actual: 'dias', yo, cuerpo, aviso, errorTexto, scripts: ['/_app/resultados.js'] });
 }
 
 // ---------- Importar desde Excel ----------
@@ -504,4 +565,26 @@ ${hayTorneos ? '<label class="casilla"><input type="checkbox" id="reemplazar"> R
 <div id="resultado" hidden></div>
 </div>`;
   return panelPagina({ titulo: 'Importar desde Excel', actual: 'importar', yo, cuerpo, scripts: ['/_app/importar.js'] });
+}
+
+export function vistaArbitrar({ yo, enJuego, deHoy }) {
+  const cuerpo = `
+${enJuego.length ? `<h2 class="subtitulo-panel">En juego</h2><div class="caja">${enJuego.map((p) => filaPanelPartido(p, yo)).join('')}</div>` : ''}
+<h2 class="subtitulo-panel">Por empezar hoy</h2>
+<div class="caja">${deHoy.length ? deHoy.map((p) => filaPanelPartido(p, yo)).join('') : '<p class="vacio-panel">No hay más partidos programados para hoy.</p>'}</div>`;
+  return panelPagina({ titulo: 'Arbitrar', actual: 'arbitrar', yo, cuerpo });
+}
+
+export function vistaMas({ yo }) {
+  const enlaces = [
+    ['/panel/dias/', 'Días de juego', 'Fechas, feriados y posponer'],
+    ['/panel/torneos/', 'Torneos y equipos', 'Tablas, desempate, equipos y convocados'],
+    ['/panel/partidos/', 'Partidos', 'Editar horarios, canchas y árbitros'],
+    ...(yo.admin ? [['/panel/importar/', 'Importar desde Excel', 'Campeonato y lista de alumnos'], ['/panel/usuarios/', 'Usuarios y roles', 'Editores y árbitros']] : []),
+    ['/panel/historial/', 'Historial', 'Quién cambió qué'],
+    ['/', 'Ver el sitio', 'laliga.lev.edu.ec'],
+  ];
+  const cuerpo = `<div class="caja">${enlaces.map(([href, t, sub]) => `<a class="fila-enlace" href="${href}"><span><b>${e(t)}</b><small>${e(sub)}</small></span><span class="flecha">›</span></a>`).join('')}</div>
+<div class="caja formulario"><p class="nota-panel">${e(yo.email)} · ${e(ROLES[yo.rol])}</p><a class="boton boton-claro" href="/auth/salir">Salir</a></div>`;
+  return panelPagina({ titulo: 'Más', actual: 'mas', yo, cuerpo });
 }

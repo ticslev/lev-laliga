@@ -47,7 +47,7 @@ class D1Local {
 // ---------- Archivos estáticos (como Workers Assets) ----------
 const TIPOS = {
   '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml',
-  '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8', '.png': 'image/png',
+  '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8', '.png': 'image/png', '.webmanifest': 'application/manifest+json',
 };
 const ASSETS = {
   async fetch(request) {

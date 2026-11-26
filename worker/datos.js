@@ -159,7 +159,7 @@ export async function estadoPartido(db, id) {
     },
     eventos: eventos.map((ev) => ({
       id: ev.id, tipo: ev.tipo, equipoId: ev.equipo_id, equipo: ev.equipo, sigla: ev.sigla, valor: ev.valor,
-      minuto: ev.minuto, periodo: ev.periodo, jugador: ev.jugador, dorsal: ev.dorsal, jugador2: ev.jugador2, detalle: ev.detalle,
+      minuto: ev.minuto, periodo: ev.periodo, jugador: ev.jugador, dorsal: ev.dorsal, jugador2: ev.jugador2, detalle: ev.detalle, clienteId: ev.cliente_id, jugadorId: ev.jugador_id,
     })),
   };
 }

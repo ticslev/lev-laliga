@@ -3,7 +3,7 @@ import { uno, todos, ejecutar, anotar, enTandas, ajuste, guardarAjuste } from '.
 import { html, json, redirigir, error, textoCorto, slug, siglaDe, siglaUnica, entero, fechaValida, colorValido, COLORES, hoyEcuador, sumarDias, ahoraISO, nombreOrdenado, claveTexto } from './util.js';
 import { DISCIPLINAS, FASES, ESTADOS, RAMAS, partidosEnJuego, partidosDeArbitro, posiciones, rondasTodosContraTodos, nombreCompetencia, empatesEnLaLinea, completarCruces, ganadorFinal, disciplina } from './datos.js';
 import { ROLES, administradores, dominio } from './auth.js';
-import { vistaInicio, vistaTorneos, vistaTorneo, vistaEquipo, vistaPartidos, vistaPartido, vistaUsuarios, vistaHistorial, vistaArbitro, vistaDias, vistaDia, vistaImportar } from './vistas/panel.js';
+import { vistaInicio, vistaTorneos, vistaTorneo, vistaEquipo, vistaPartidos, vistaPartido, vistaUsuarios, vistaHistorial, vistaArbitro, vistaDias, vistaDia, vistaImportar, vistaArbitrar, vistaMas } from './vistas/panel.js';
 import { importarCampeonato, importarAlumnos, aplicarFechas, enlazarCursos } from './importar.js';
 import { datosArbitro, puedeArbitrar } from './arbitro.js';
 import { cargarEjemplo } from './ejemplo.js';
@@ -12,6 +12,21 @@ const SELECT_PARTIDO = `SELECT p.*, t.nombre AS torneo_nombre, t.disciplina, t.p
   l.nombre AS local_nombre, v.nombre AS visita_nombre
   FROM partidos p JOIN torneos t ON t.id = p.torneo_id
   LEFT JOIN equipos l ON l.id = p.local_id LEFT JOIN equipos v ON v.id = p.visita_id`;
+
+// Día de juego que conviene trabajar: el de hoy, el próximo con fecha o el primero con pendientes.
+async function diaActual(db) {
+  const dias = await todos(db, `SELECT d.numero, d.fecha, COUNT(p.id) AS total,
+      SUM(CASE WHEN p.estado = 'finalizado' THEN 1 ELSE 0 END) AS hechos,
+      SUM(CASE WHEN p.estado IN ('en_vivo','entretiempo') THEN 1 ELSE 0 END) AS vivos
+    FROM dias_juego d JOIN partidos p ON p.dia = d.numero GROUP BY d.numero ORDER BY d.numero`);
+  if (!dias.length) return null;
+  const hoy = hoyEcuador();
+  return dias.find((d) => d.fecha === hoy)
+    || dias.find((d) => d.hechos < d.total && (!d.fecha || d.fecha <= hoy))
+    || dias.find((d) => d.fecha && d.fecha > hoy)
+    || dias.find((d) => d.hechos < d.total)
+    || dias[dias.length - 1];
+}
 
 // Aviso de "Guardado" que viaja en la URL después de un POST.
 function volver(url, mensaje, esError = false) {
@@ -105,8 +120,29 @@ export async function rutaPanel(request, env, url, yo) {
       uno(db, 'SELECT COUNT(*) AS n FROM torneos'),
       uno(db, `SELECT COUNT(*) AS n FROM usuarios WHERE estado = 'pendiente'`),
     ]);
-    return html(vistaInicio({ yo, enJuego, hoy: deHoy, mios, sinArbitro: sinArbitro.n, hayTorneos: hayTorneos.n > 0, pendientes: yo.admin ? pendientes.n : 0 }));
+    const dia = await diaActual(db);
+    const canchas = dia ? await todos(db, `SELECT COALESCE(lugar, 'Sin cancha') AS lugar, COUNT(*) AS total, SUM(estado = 'finalizado') AS hechos
+      FROM partidos WHERE dia = ? GROUP BY lugar ORDER BY lugar`, dia.numero) : [];
+    const sinResultado = dia ? await todos(db, `${SELECT_PARTIDO} WHERE p.dia = ? AND p.estado = 'programado' AND p.hora IS NOT NULL AND p.hora < ? AND ? >= ?
+      ORDER BY p.hora LIMIT 20`, dia.numero, new Date(Date.now() - 5 * 3600 * 1000 - 30 * 60 * 1000).toISOString().slice(11, 16), hoy, dia.fecha || '9999') : [];
+    return html(vistaInicio({ yo, enJuego, hoy: deHoy, mios, sinArbitro: sinArbitro.n, hayTorneos: hayTorneos.n > 0, pendientes: yo.admin ? pendientes.n : 0, dia, canchas, sinResultado, ...avisos(url) }));
   }
+
+  // Atajos de las pestañas del celular
+  if (ruta === '/panel/resultados/') {
+    const dia = await diaActual(db);
+    return redirigir(dia ? `/panel/dias/${dia.numero}/` : '/panel/dias/');
+  }
+  if (ruta === '/panel/arbitrar/') {
+    const hoy = hoyEcuador();
+    const [enJuego, deHoy] = await Promise.all([
+      todos(db, `${SELECT_PARTIDO} WHERE p.estado IN ('en_vivo','entretiempo') ${yo.editor ? '' : 'AND p.arbitro_email = ?'} ORDER BY p.fecha`, ...(yo.editor ? [] : [yo.email])),
+      todos(db, `${SELECT_PARTIDO} WHERE substr(p.fecha, 1, 10) = ? AND p.estado = 'programado' AND p.local_id IS NOT NULL AND p.visita_id IS NOT NULL
+        ${yo.editor ? '' : 'AND p.arbitro_email = ?'} ORDER BY p.fecha, p.lugar`, hoy, ...(yo.editor ? [] : [yo.email])),
+    ]);
+    return html(vistaArbitrar({ yo, enJuego, deHoy }));
+  }
+  if (ruta === '/panel/mas/') return html(vistaMas({ yo }));
 
   if (ruta === '/panel/ejemplo' && post) {
     if (!yo.admin) return error('Solo para administradores.', 403);

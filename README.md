@@ -61,6 +61,23 @@ La primera vez que alguien entra queda **pendiente** hasta que un administrador 
 5. **Dominio:** borra el registro DNS `laliga` si existe. Luego Worker → *Settings* → *Domains & Routes* → *Add* → *Custom domain* → `laliga.lev.edu.ec`.
 6. Entra a `https://laliga.lev.edu.ec/panel/` con tu cuenta. En el inicio puedes **cargar datos de ejemplo** para ver todo funcionando; se borran después desde cada torneo con *Borrar torneo*.
 
+## En el celular
+
+- **Visitante.** Tiene una barra de pestañas abajo: Hoy, Calendario, Tablas y Equipos.
+  - **Mi curso:** se elige una vez y queda guardado en el celular. La portada muestra los partidos de ese curso y su puesto en cada competencia.
+  - **Días de juego:** una tira de días en la portada permite moverse entre ellos.
+- **Avisos de goles.** En la página de un partido, *Avisarme los goles de mi curso* activa notificaciones del navegador.
+  - **iPhone:** primero hay que agregar el sitio a la pantalla de inicio.
+  - **Claves:** las claves (VAPID) se generan solas y se guardan en D1.
+  - **Envío:** el Durable Object manda los avisos en tandas de 40, para no pasar el límite del plan gratuito.
+- **Editor.** El panel tiene pestañas abajo: Hoy, Resultados, Arbitrar y Más.
+  - **Resultados:** una tarjeta por partido con un botón por equipo. Se guarda sin recargar, con *Deshacer*, y se puede filtrar por pendientes o por cancha.
+  - **Marcador o penales:** una hoja con botones + y − por equipo.
+- **Árbitro con una mano.** "+ GOL" ocupa media pantalla y se registra al primer toque; quién anotó se elige después, y es opcional.
+  - El reloj se inicia, pausa y reanuda tocándolo.
+  - *Deshacer* siempre está visible.
+  - Ajustar reloj, finalizar, reabrir y ver el registro completo están en *⋯*.
+
 ## Cargar el campeonato desde Excel
 
 En el panel → **Importar desde Excel** (solo para administradores):

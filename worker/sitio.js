@@ -17,6 +17,26 @@ import {
 } from './vistas/publico.js';
 import { conectar } from './vivo.js';
 
+// Día de juego que muestra la portada: el pedido (?dia=N), el de hoy, el próximo con partidos pendientes o el último.
+async function diaDeJuego(db, url) {
+  const dias = await todos(db, `SELECT d.numero, d.fecha,
+      SUM(CASE WHEN p.estado NOT IN ('finalizado','suspendido') THEN 1 ELSE 0 END) AS pendientes
+    FROM dias_juego d JOIN partidos p ON p.dia = d.numero JOIN torneos t ON t.id = p.torneo_id AND t.visible = 1
+    GROUP BY d.numero ORDER BY d.numero`);
+  if (!dias.length) return null;
+  const hoy = hoyEcuador();
+  const pedido = Number(url.searchParams.get('dia'));
+  const elegido = dias.find((d) => d.numero === pedido)
+    || dias.find((d) => d.fecha === hoy)
+    || dias.find((d) => d.fecha && d.fecha > hoy)
+    || dias.find((d) => d.pendientes > 0)
+    || dias[dias.length - 1];
+  const i = dias.indexOf(elegido);
+  const tira = dias.slice(Math.max(0, i - 1), Math.max(0, i - 1) + 6);
+  const partidos = await todos(db, `${SELECT_LISTA} WHERE t.visible = 1 AND p.dia = ? ORDER BY p.hora, p.lugar, p.id`, elegido.numero);
+  return { ...elegido, hoy: elegido.fecha === hoy, tira, partidos };
+}
+
 function elegirTorneo(torneos, url) {
   const s = url.searchParams.get('t');
   return torneos.find((t) => t.slug === s) || torneos[0] || null;
@@ -36,7 +56,8 @@ export async function rutaPublica(request, env, url) {
     const tabla = destacado ? await posiciones(db, destacado) : [];
     const idsGoles = torneos.filter((t) => disciplina(t).marcador === 'goles').map((t) => t.id);
     const anotadoresTop = await anotadores(db, idsGoles, 5);
-    return html(vistaPortada({ enJuego, proximos, resultados, torneos, destacado, tabla, anotadoresTop }));
+    const dia = await diaDeJuego(db, url);
+    return html(vistaPortada({ enJuego, proximos, resultados, torneos, destacado, tabla, anotadoresTop, dia }));
   }
 
   if (ruta === '/fixture/' || ruta === '/posiciones/' || ruta === '/equipos/') {
@@ -106,7 +127,9 @@ export async function rutaPublica(request, env, url) {
       p.visita_id ? convocadosDe(db, p.visita_id) : [],
       partidosEnJuego(db),
     ]);
-    return html(vistaPartido({ estado, p, jugadoresLocal, jugadoresVisita, enVivo: enJuego.length > 0 }));
+    const despues = p.lugar && p.fecha ? await uno(db, `${SELECT_LISTA} WHERE p.lugar = ? AND p.fecha > ? AND substr(p.fecha, 1, 10) = ? AND p.id != ?
+      ORDER BY p.fecha LIMIT 1`, p.lugar, p.fecha, p.fecha.slice(0, 10), p.id) : null;
+    return html(vistaPartido({ estado, p, jugadoresLocal, jugadoresVisita, enVivo: enJuego.length > 0, despues }));
   }
 
   if (ruta === '/vivo/') {
@@ -169,6 +192,43 @@ export async function apiPublica(request, env, url, ctx) {
         relojBase: p.reloj_base, relojInicio: p.reloj_inicio, periodo: p.periodo,
       })),
     });
+  }
+
+  // Lista de cursos para elegir "Mi curso" (solo los que tienen equipos en el campeonato).
+  if (ruta === '/api/cursos') {
+    const cursos = await todos(db, `SELECT c.id, c.nivel, c.nombre FROM cursos c
+      WHERE EXISTS (SELECT 1 FROM equipos q JOIN torneos t ON t.id = q.torneo_id AND t.visible = 1 WHERE q.curso_id = c.id)
+      ORDER BY c.orden, c.nombre`);
+    return json({ cursos }, 200, { 'Cache-Control': 'public, max-age=300' });
+  }
+
+  // Resumen de "Mi curso": sus equipos, puesto en cada tabla, partidos de hoy y el próximo.
+  if (ruta === '/api/mi-curso') {
+    const cursoId = Number(url.searchParams.get('curso'));
+    const curso = cursoId ? await uno(db, 'SELECT id, nivel, nombre FROM cursos WHERE id = ?', cursoId) : null;
+    if (!curso) return error('Ese curso no existe.', 404);
+    const equipos = await todos(db, `SELECT q.id, q.nombre, q.sigla, q.color, t.id AS torneo_id FROM equipos q
+      JOIN torneos t ON t.id = q.torneo_id AND t.visible = 1 WHERE q.curso_id = ? ORDER BY t.orden`, cursoId);
+    const hoy = hoyEcuador();
+    const items = [];
+    for (const q of equipos) {
+      const torneo = await uno(db, 'SELECT * FROM torneos WHERE id = ?', q.torneo_id);
+      const tabla = await posiciones(db, torneo);
+      const fila = tabla.find((f) => f.id === q.id);
+      const proximo = await uno(db, `${SELECT_LISTA} WHERE (p.local_id = ?1 OR p.visita_id = ?1) AND p.estado != 'finalizado'
+        ORDER BY p.estado IN ('en_vivo','entretiempo') DESC, p.dia IS NULL, p.dia, p.hora LIMIT 1`, q.id);
+      items.push({
+        equipo: q.id, competencia: torneo.competencia || disciplina(torneo).nombre, nivel: torneo.nivel, slug: torneo.slug,
+        puesto: fila && fila.pj ? fila.pos : null, puntos: fila ? fila.pts : 0, grupo: fila?.grupo || '',
+        proximo: proximo ? {
+          id: proximo.id, rival: proximo.local_id === q.id ? (proximo.visita_nombre || proximo.etiqueta_visita) : (proximo.local_nombre || proximo.etiqueta_local),
+          hora: proximo.hora, lugar: proximo.lugar, fecha: proximo.fecha, dia: proximo.dia, estado: proximo.estado,
+          hoy: Boolean(proximo.fecha && proximo.fecha.startsWith(hoy)),
+          marcador: proximo.estado === 'programado' ? null : (proximo.local_id === q.id ? `${proximo.goles_local}–${proximo.goles_visita}` : `${proximo.goles_visita}–${proximo.goles_local}`),
+        } : null,
+      });
+    }
+    return json({ curso, items, hoy });
   }
 
   let m = ruta.match(/^\/api\/partido\/(\d+)$/);

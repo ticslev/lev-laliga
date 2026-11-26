@@ -1,0 +1,16 @@
+{
+  "name": "La Liga Lev",
+  "short_name": "La Liga Lev",
+  "description": "Campeonato interno de la Unidad Educativa Lev Vygotsky: partidos en vivo, calendario y tablas.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#120b24",
+  "theme_color": "#120b24",
+  "lang": "es",
+  "icons": [
+    { "src": "/_app/icono-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/_app/icono-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/_app/icono-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
