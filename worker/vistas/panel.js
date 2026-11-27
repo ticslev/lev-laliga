@@ -3,6 +3,7 @@ import { e, fechaCorta, COLORES } from '../util.js';
 import { escudo, NOMBRE } from './base.js';
 import { DISCIPLINAS, FASES, ESTADOS, RAMAS, disciplina, porGrupo } from '../datos.js';
 import { ROLES } from '../auth.js';
+import { simbolo } from './logo.js';
 
 function opciones(obj, actual) {
   return Object.entries(obj).map(([v, t]) => `<option value="${e(v)}"${String(v) === String(actual ?? '') ? ' selected' : ''}>${e(t)}</option>`).join('');
@@ -36,7 +37,7 @@ ${scripts.map((s) => `<script src="${s}" defer></script>`).join('')}
 <body class="panel">
 <div class="panel-marco">
 <aside class="panel-menu">
-<a class="panel-logo" href="/panel/">LA LIGA LEV<small>Panel de encargados</small></a>
+<a class="panel-logo" href="/panel/">${simbolo(40)}<span><small class="pl-liga">LA LIGA</small>LEV<small>Panel de encargados</small></span></a>
 <nav aria-label="Panel">${enlaces.map(([id, href, t]) => `<a href="${href}"${id === actual ? ' aria-current="page"' : ''}>${t}</a>`).join('')}
 <a href="/" target="_blank" rel="noopener">Ver el sitio ↗</a></nav>
 <div class="panel-yo">${yo.foto ? `<img src="${e(yo.foto)}" alt="" width="32" height="32" referrerpolicy="no-referrer">` : ''}<span>${e(yo.email)}<small>${e(ROLES[yo.rol])}</small></span><a href="/auth/salir">Salir</a></div>

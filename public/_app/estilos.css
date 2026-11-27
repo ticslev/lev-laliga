@@ -49,9 +49,11 @@ abbr { text-decoration: none; }
 .cabecera-fila { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; justify-content: space-between; padding-top: 12px; padding-bottom: 12px; }
 .logo { display: flex; align-items: center; gap: 10px; color: #fff; text-decoration: none; }
 .logo:hover { color: #fff; }
-.logo-icono { color: var(--oro); flex: none; }
-.logo span { font-family: var(--titulo); font-weight: 800; font-size: 26px; letter-spacing: .02em; line-height: 1; }
-.logo small { display: block; font-size: 12px; font-weight: 700; color: var(--texto-3); letter-spacing: .16em; text-transform: uppercase; margin-top: 2px; }
+.logo-simbolo { flex: none; display: block; }
+.logo-texto { display: flex; flex-direction: column; font-family: var(--titulo); font-weight: 800; font-size: 34px; line-height: .82; letter-spacing: .02em; }
+.logo-texto small { font-family: var(--cuerpo); font-size: 10px; font-weight: 800; letter-spacing: .38em; color: var(--texto-2); margin-bottom: 3px; }
+.logo:hover .logo-simbolo { transform: rotate(-6deg); }
+.logo-simbolo { transition: transform .3s cubic-bezier(.2, .8, .2, 1); }
 .nav { display: flex; flex-wrap: wrap; gap: 2px; }
 .nav a { color: var(--texto-2); text-decoration: none; font-weight: 500; font-size: 15px; padding: 10px 12px; border-radius: 10px; display: flex; align-items: center; gap: 8px; min-height: 44px; }
 .nav a:hover { color: #fff; background: var(--superficie); }
@@ -370,7 +372,10 @@ abbr { text-decoration: none; }
 .modo-tv { overflow: hidden; }
 .tv { min-height: 100vh; display: flex; flex-direction: column; background: radial-gradient(1200px 600px at 50% 0%, #2c1760, var(--noche) 70%); }
 .tv-cabeza { display: flex; justify-content: space-between; align-items: center; padding: 2vh 3vw; }
-.logo-tv { font-family: var(--titulo); font-weight: 800; font-size: 4vh; color: var(--oro); letter-spacing: .04em; }
+.logo-tv { display: flex; align-items: center; gap: 1.4vh; font-family: var(--titulo); font-weight: 800; color: #fff; }
+.logo-tv .logo-simbolo { width: 6vh; height: 6vh; }
+.logo-tv > span { display: flex; flex-direction: column; font-size: 5vh; line-height: .82; }
+.logo-tv small { font-family: var(--cuerpo); font-size: 1.4vh; letter-spacing: .38em; color: var(--texto-2); margin-bottom: .4vh; }
 .tv-hora { font-family: var(--titulo); font-weight: 700; font-size: 4vh; color: var(--texto-2); }
 .tv-grilla { flex: 1; display: grid; gap: 2vh; padding: 0 3vw 3vh; }
 .tv-2 { grid-template-columns: 1fr 1fr; }
@@ -492,9 +497,9 @@ abbr { text-decoration: none; }
 
 @media (max-width: 640px) {
   .cabecera { position: sticky; }
-  .logo span { font-size: 21px; }
-  .logo small { font-size: 10px; }
-  .logo-icono { width: 30px; height: 30px; }
+  .logo .logo-simbolo { width: 36px; height: 36px; }
+  .logo-texto { font-size: 28px; }
+  .logo-texto small { font-size: 9px; }
   .boton-encargados { padding: 9px 12px; font-size: 13px; }
   .cabecera-fila { gap: 8px 12px; }
   .mg-goles { font-size: 56px; }
@@ -517,8 +522,10 @@ abbr { text-decoration: none; }
 .panel a { color: #5b2fc9; }
 .panel-marco { display: flex; flex-wrap: wrap; min-height: 100vh; }
 .panel-menu { flex: 1 1 230px; max-width: 100%; background: var(--tinta); color: var(--texto); padding: 20px 14px; display: flex; flex-direction: column; gap: 4px; }
-.panel-logo { font-family: var(--titulo); font-weight: 800; font-size: 26px; color: #fff !important; text-decoration: none; padding: 0 10px 18px; line-height: 1; }
-.panel-logo small { display: block; font-family: var(--cuerpo); font-size: 12px; font-weight: 600; color: var(--texto-3); margin-top: 4px; }
+.panel-logo { display: flex; align-items: center; gap: 10px; font-family: var(--titulo); font-weight: 800; font-size: 30px; color: #fff !important; text-decoration: none; padding: 0 10px 18px; line-height: .85; }
+.panel-logo > span { display: flex; flex-direction: column; }
+.panel-logo small { display: block; font-family: var(--cuerpo); font-size: 11px; font-weight: 600; color: var(--texto-3); margin-top: 5px; letter-spacing: 0; }
+.panel-logo small.pl-liga { font-size: 9px; font-weight: 800; letter-spacing: .38em; color: var(--texto-2); margin: 0 0 3px; }
 .panel-menu nav { display: flex; flex-direction: column; gap: 2px; }
 .panel-menu nav a { color: var(--texto-2) !important; text-decoration: none; font-size: 14px; padding: 12px; border-radius: 10px; }
 .panel-menu nav a:hover { background: var(--superficie-2); color: #fff !important; }

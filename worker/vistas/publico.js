@@ -1,6 +1,7 @@
 // Páginas públicas: portada, fixture, posiciones, equipos, partido, en vivo, modo TV.
 import { e, fechaCorta, hoyEcuador, ahoraEcuador } from '../util.js';
 import { pagina, escudo, filaPartido, tarjetaPartido, centroMarcador, etiquetaEstado, vacio, nombreLocal, nombreVisita, cuando, soloGanador } from './base.js';
+import { simbolo } from './logo.js';
 import { disciplina, DISCIPLINAS, FASES, EN_JUEGO, segundosReloj, porGrupo } from '../datos.js';
 
 const ICONO_BALON = '<svg class="ic" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 7l4 3-1.5 4.5h-5L8 10z" fill="currentColor"/></svg>';
@@ -327,7 +328,7 @@ ${enJuego.length ? `<div class="grilla-vivo">${enJuego.map((p) => `<div class="t
 
 export function vistaTv({ enJuego, proximos, resultados }) {
   const cuerpo = `<div class="tv">
-<header class="tv-cabeza"><span class="logo-tv">LA LIGA LEV</span><span class="tv-hora" id="tv-hora"></span></header>
+<header class="tv-cabeza"><span class="logo-tv">${simbolo(64)}<span><small>LA LIGA</small>LEV</span></span><span class="tv-hora" id="tv-hora"></span></header>
 ${enJuego.length ? `<div class="tv-grilla tv-${Math.min(enJuego.length, 4)}">${enJuego.slice(0, 4).map((p) => `<div class="tv-partido">
 <div class="tv-info">${etiquetaEstado(p)} <span>${e(p.competencia || disciplina(p).nombre)} · ${e(p.nivel || p.torneo_nombre)}${p.lugar ? ' · ' + e(p.lugar) : ''}</span></div>
 <div class="tv-marcador"><div>${escudo(p.local_nombre, p.local_sigla, p.local_color, 'xl')}<b>${e(nombreLocal(p))}</b></div><span class="tv-goles" data-marcador="${p.id}">${p.goles_local} – ${p.goles_visita}</span><div>${escudo(p.visita_nombre, p.visita_sigla, p.visita_color, 'xl')}<b>${e(nombreVisita(p))}</b></div></div>

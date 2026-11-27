@@ -1,6 +1,7 @@
 // Plantilla común: cabecera, pie y piezas que se repiten (escudos, tarjetas de partido).
 import { e, fechaCorta } from '../util.js';
 import { ESTADOS, FASES, disciplina } from '../datos.js';
+import { simbolo } from './logo.js';
 
 export const NOMBRE = 'La Liga Lev';
 
@@ -12,7 +13,6 @@ const NAV = [
   ['equipos', '/equipos/', 'Equipos'],
 ];
 
-const TROFEO = `<svg class="logo-icono" width="40" height="40" viewBox="0 0 40 40" aria-hidden="true"><path d="M8 6h24v8a12 12 0 0 1-24 0z" fill="currentColor"/><path d="M14 30h12v4H14zM18 25h4v5h-4z" fill="currentColor"/><path d="M8 9H3v3a6 6 0 0 0 6 6M32 9h5v3a6 6 0 0 1-6 6" fill="none" stroke="currentColor" stroke-width="2.5"/></svg>`;
 
 export function pagina({ titulo, actual = '', cuerpo, scripts = [], descripcion, clase = '', enVivo = false, sinCabecera = false }) {
   const t = titulo ? `${titulo} · ${NOMBRE}` : `${NOMBRE} · Campeonato interno del Lev`;
@@ -36,7 +36,7 @@ ${[...scripts, '/_app/comun.js'].map((s) => `<script src="${s}" defer></script>`
 <a class="saltar" href="#contenido">Saltar al contenido</a>
 ${sinCabecera ? '' : `<header class="cabecera">
 <div class="contenedor cabecera-fila">
-<a class="logo" href="/">${TROFEO}<span>LA LIGA LEV<small>Campeonato interno</small></span></a>
+<a class="logo" href="/" aria-label="La Liga Lev, inicio">${simbolo(42)}<span class="logo-texto" aria-hidden="true"><small>LA LIGA</small>LEV</span></a>
 <nav class="nav" aria-label="Principal">${nav}<a href="/vivo/" class="nav-vivo${actual === 'vivo' ? ' activo' : ''}"${actual === 'vivo' ? ' aria-current="page"' : ''}>${enVivo ? '<span class="punto-vivo" aria-hidden="true"></span>' : ''}En vivo</a></nav>
 <button type="button" class="mi-curso-chip" data-mi-curso hidden><span class="mc-sigla" aria-hidden="true">+</span><span class="mc-texto">Mi curso</span></button>
 <a class="boton-encargados" href="/panel/">Encargados</a>
